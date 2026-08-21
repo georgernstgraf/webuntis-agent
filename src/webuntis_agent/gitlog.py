@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import subprocess
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 REPOS_ROOT = Path(os.environ.get(
@@ -150,30 +150,26 @@ def get_commits_for_class(
     repo_filter: list[str] | None = None,
 ) -> list[CommitInfo]:
     folders = resolve_class_folders_for_date(class_name, when)
-    start = when - timedelta(days=window_days)
-    end = when + timedelta(days=window_days)
-    all_commits: list[CommitInfo] = []
-    for repo_path in sorted(root.glob("GRG-*")):
-        if not repo_path.is_dir():
-            continue
-        if repo_filter is not None and repo_path.name not in repo_filter:
-            continue
-        commits = _git_log(repo_path, folders,
-                           start.strftime("%Y-%m-%d"),
-                           end.strftime("%Y-%m-%d"))
-        all_commits.extend(commits)
-    if not all_commits and fallback_days > window_days:
-        start = when - timedelta(days=fallback_days)
-        end = when + timedelta(days=fallback_days)
+
+    def _scan(days: int) -> list[CommitInfo]:
+        start = when - timedelta(days=days)
+        end = when + timedelta(days=days)
+        found: list[CommitInfo] = []
         for repo_path in sorted(root.glob("GRG-*")):
             if not repo_path.is_dir():
                 continue
             if repo_filter is not None and repo_path.name not in repo_filter:
                 continue
-            commits = _git_log(repo_path, folders,
-                               start.strftime("%Y-%m-%d"),
-                               end.strftime("%Y-%m-%d"))
-            all_commits.extend(commits)
+            found.extend(_git_log(
+                repo_path, folders,
+                start.strftime("%Y-%m-%d"),
+                end.strftime("%Y-%m-%d"),
+            ))
+        return found
+
+    all_commits = _scan(window_days)
+    if not all_commits and fallback_days > window_days:
+        all_commits = _scan(fallback_days)
     return all_commits
 
 

@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import date
 
 
@@ -35,9 +36,7 @@ def _make_client(args: argparse.Namespace):
     return Client(
         host=os.environ.get("WEBUNTIS_HOST",
                             "https://spengergasse.webuntis.com"),
-        school=os.environ.get("WEBUNTIS_USER_SCHOOL",
-                              os.environ.get("WEBUNTIS_SCHOOL",
-                                             "spengergasse")),
+        school=os.environ.get("WEBUNTIS_SCHOOL", "spengergasse"),
     )
 
 
@@ -175,12 +174,11 @@ def cmd_lehrstoff_set(args: argparse.Namespace) -> int:
     if args.topic_id is None:
         topic = c.get_lesson_topic(args.period, school_year_id=sy)
         pts = topic.get("periodTopics", [])
-        if pts:
+        if pts and pts[0].get("topic"):
             args.topic_id = pts[0]["topic"]["id"]
             print(f"resolved topic_id={args.topic_id}")
-    if args.topic_id is None:
-        print("no topic id found; specify --topic-id", file=sys.stderr)
-        return 2
+        else:
+            args.topic_id = 0  # Neuanlage: server creates new topic row
     text = _read_text_arg(args)
     res = c.set_lesson_topic(
         args.period, args.topic_id, text,
@@ -196,7 +194,6 @@ def cmd_lehrstoff_batch_set(args: argparse.Namespace) -> int:
     when classId + start + end + date are present. Sleeps --delay seconds
     between PUTs to avoid triggering rate-limiting.
     """
-    import time as _time
     from pathlib import Path
     items = json.loads(Path(args.file).read_text(encoding="utf-8"))
     c = _make_client(args)
@@ -204,7 +201,7 @@ def cmd_lehrstoff_batch_set(args: argparse.Namespace) -> int:
     results: list[dict] = []
     for i, it in enumerate(items):
         if i and args.delay > 0:
-            _time.sleep(args.delay)
+            time.sleep(args.delay)
         pid = it["periodId"]
         tid = it.get("topicId")
         text = it["text"]
@@ -272,12 +269,12 @@ def cmd_lehrstoff_from_git(args: argparse.Namespace) -> int:
     else:
         print(format_commits(commits))
         print("---")
-        for c in commits:
-            diff = get_commit_diff_by_name(c.repo, c.hash)
-            print(f"=== diff {c.repo} {c.hash[:8]} ===")
+        for ci in commits:
+            diff = get_commit_diff_by_name(ci.repo, ci.hash)
+            print(f"=== diff {ci.repo} {ci.hash[:8]} ===")
             print(diff)
             print()
-        msgs = [c.message for c in commits if c.message]
+        msgs = [ci.message for ci in commits if ci.message]
         text = "; ".join(dict.fromkeys(msgs))[:240] if msgs else "(no messages)"
         if args.dry_run:
             print(f"would set period={args.period} text={text!r}")
@@ -285,9 +282,9 @@ def cmd_lehrstoff_from_git(args: argparse.Namespace) -> int:
     if args.period is None or args.topic_id is None:
         print("need --period and --topic-id (or --dry-run)", file=sys.stderr)
         return 2
-    c = _make_client(args)
-    sy = c.resolve_schoolyear_id(override=args.school_year_id)
-    res = c.set_lesson_topic(args.period, args.topic_id, text,
+    client = _make_client(args)
+    sy = client.resolve_schoolyear_id(override=args.school_year_id)
+    res = client.set_lesson_topic(args.period, args.topic_id, text,
                              school_year_id=sy)
     print(json.dumps(res, indent=2, ensure_ascii=False))
     return 0
@@ -306,14 +303,13 @@ def cmd_batch_check_absences(args: argparse.Namespace) -> int:
 
     JSON format: [{"periodId": 123}, ...] (only periodId needed).
     """
-    import time as _time
     from pathlib import Path
     items = json.loads(Path(args.file).read_text(encoding="utf-8"))
     c = _make_client(args)
     results: list[dict] = []
     for i, it in enumerate(items):
         if i and args.delay > 0:
-            _time.sleep(args.delay)
+            time.sleep(args.delay)
         pid = it["periodId"]
         entry: dict = {"periodId": pid}
         try:
@@ -332,7 +328,6 @@ def cmd_batch_check_absences(args: argparse.Namespace) -> int:
 
 def cmd_check_all_absences(args: argparse.Namespace) -> int:
     """Fetch all open periods and check absences for every one that needs it."""
-    import time as _time
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
     data = c.get_open_periods(args.start, args.end, school_year_id=sy)
@@ -343,7 +338,7 @@ def cmd_check_all_absences(args: argparse.Namespace) -> int:
     results: list[dict] = []
     for i, p in enumerate(need_check):
         if i and args.delay > 0:
-            _time.sleep(args.delay)
+            time.sleep(args.delay)
         pid = p.get("period", {}).get("id")
         entry: dict = {"periodId": pid}
         try:

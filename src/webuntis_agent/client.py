@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -151,6 +152,16 @@ class Client:
         self._jwt: str | None = None
         self._jwt_payload: JwtPayload | None = None
         self._schoolyears: list[dict[str, Any]] | None = None
+
+    def close(self) -> None:
+        """Close the underlying HTTP client."""
+        self.http.close()
+
+    def __enter__(self) -> "Client":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
 
     # ----- session / auth ---------------------------------------------
 
@@ -371,8 +382,7 @@ class Client:
 
     def get_csrf_token(self, period_id: int) -> str:
         """GET classregpage.do for a period, extract _csrf from HTML."""
-        import time as _time
-        ts = int(_time.time() * 1000)
+        ts = int(time.time() * 1000)
         r = _request_with_retry(
             self.http, "GET",
             f"{self.host}/WebUntis/classregpage.do",
@@ -387,7 +397,6 @@ class Client:
             },
         )
         r.raise_for_status()
-        import re
         m = re.search(r'name="_csrf"\s+value="([^"]+)"', r.text)
         if not m:
             raise RuntimeError(
@@ -402,9 +411,8 @@ class Client:
         Two-step: (1) GET classregpage.do to obtain _csrf token,
         (2) POST classregpage.do with absencechecked=absencechecked.
         """
-        import time as _time
         csrf = self.get_csrf_token(period_id)
-        ts = int(_time.time() * 1000)
+        ts = int(time.time() * 1000)
         r = _request_with_retry(
             self.http, "POST",
             f"{self.host}/WebUntis/classregpage.do",
