@@ -1,58 +1,282 @@
 # webuntis-agent
 
-Reverse-engineering the WebUntis API to automate **Lehrstoff** (lesson topic
-entry) for Georg Graf's teaching at HTL Spengergasse.
+Automate the **Lehrstoff eintragen** (lesson topic entry) and **Abwesenheiten
+kontrolliert** (absence check) chores in [WebUntis] by reverse-engineering the
+undocumented REST endpoints that the web UI calls — then replaying them from a
+Python CLI.
 
-## Goal
+Built for Georg Graf's teaching at [HTL Spengergasse] (Vienna). Lesson topics are
+derived automatically from the Git history of the [GRG-*] teaching repositories,
+so the agent fills in what was actually taught based on commits, diffs, and
+README entries — no manual typing required.
 
-Automate the manual "Lehrstoff eintragen" step in WebUntis by replaying the
-undocumented REST/JSON-RPC endpoints that the WebUntis web UI calls when a
-teacher records the topic of a lesson.
+> ⚠️ This is a **reverse-engineering** project. The write endpoints for lesson
+> topics and absence checks are **not part of the public WebUntis JSON-RPC API**.
+> They were discovered by recording browser traffic via the Chrome DevTools
+> Protocol. See [`docs/WEBUNTIS_API.md`](docs/WEBUNTIS_API.md) for the full
+> endpoint reference.
 
-## Approach
+---
 
-1. **CDP-Recorder** attaches to a running Brave (Chromium) browser via the
-   Chrome DevTools Protocol (`--remote-debugging-port=9222`).
-2. While the user performs the "Lehrstoff eintragen" action in the WebUntis
-   UI as usual, the recorder captures all `Network.*` and `Runtime.*`
-   (console) events for the WebUntis domain into structured JSONL files
-   under `recordings/`.
-3. The captured requests are analyzed to identify the write endpoint(s).
-4. A `client.py` replays those endpoints with session cookies harvested via
-   `Network.getAllCookies`.
-5. A CLI/agent derives the Lehrstoff from the GRG-* teaching repository Git
-   logs (see `~/repos/georgernstgraf/GRG-*` and the AGENTS.md in `~/`) and
-   submits it via the client.
+## Features
 
-## School
+- **CDP-Recorder** — attaches to a running Brave browser via
+  `--remote-debugging-port=9222` and captures all Network requests, response
+  bodies, and console output for the WebUntis domain into structured JSONL
+  files. No F12 or cURL copying needed.
+- **WebUntis Client** — logs in, obtains JWT, and replays the discovered
+  endpoints: lesson topics (GET/PUT), open periods, schoolyears, and absence
+  checks (CSRF-protected POST). All dynamic values (teacherId, Tenant-Id,
+  School-Year-Id) are derived at runtime from the JWT — no hardcoded constants.
+- **Git-Log Analyzer** — scans the GRG-* teaching repos to find what was
+  taught on a given date: handles split classes (`_X`/`_Y` groups), February
+  class-name changes (`3aaif` → `4aaif`), ±10/±30-day commit windows, and
+  full commit diffs.
+- **Fill-Open-Periods Skill** — an [opencode] skill that orchestrates the
+  full workflow: fetch open periods → derive topic text from git diffs →
+  present a confirmation table → batch-submit via the CLI.
+- **Retry-with-Backoff** — survives transient IP rate-limiting (TCP resets)
+  from the WebUntis server after rapid API calls.
 
-- WebUntis host: `https://spengergasse.webuntis.com/`
-- School slug (for `?school=...`): `spengergasse`
+---
 
-## Stack
+## Quick Start
+
+### Prerequisites
 
 - Python 3.11+
-- `playwright` (CDP attach + automation)
-- `httpx` (HTTP client, replay)
-- `websockets` (raw CDP if needed)
+- A Brave (or Chromium) browser
+- GRG-* teaching repos under `~/repos/georgernstgraf/GRG-*`
+- A WebUntis account with teacher access
 
-## Project layout
+### Install
+
+```bash
+cd ~/repos/georgernstgraf/webuntis-agent
+python3 -m venv .venv
+.venv/bin/pip install -e .
+```
+
+### Configure
+
+```bash
+cp .env.example .env
+# Edit .env and fill in your WebUntis credentials:
+#   user=grafg
+#   password=<your-password>
+#   school=spengergasse
+#   host=https://spengergasse.webuntis.com
+```
+
+---
+
+## Usage
+
+### List open periods (lessons missing a topic or absence check)
+
+```bash
+.venv/bin/python -m webuntis_agent.cli lehrstoff list \
+    --start 2025-09-01 --end 2026-07-05
+```
+
+Add `--json` for machine-readable output (includes clickable
+`lessonDetailsUrl` per period):
+
+```bash
+.venv/bin/python -m webuntis_agent.cli lehrstoff list \
+    --start 2025-09-01 --end 2026-07-05 --json
+```
+
+### Write a single lesson topic
+
+```bash
+.venv/bin/python -m webuntis_agent.cli lehrstoff set \
+    --period 5458590 --topic-id 2296724 \
+    --text-file /tmp/topic.txt
+```
+
+(Use `--text-file` instead of `--text "..."` to avoid shell-quoting issues
+with UTF-8 characters like `HÜ`, `ä`, `ö`.)
+
+### Batch-submit multiple topics from a JSON file
+
+```bash
+.venv/bin/python -m webuntis_agent.cli lehrstoff batch-set \
+    --file /tmp/batch.json --delay 1.0
+```
+
+JSON format:
+
+```json
+[
+  {
+    "periodId": 5458590,
+    "topicId": 2296724,
+    "text": "Matura-Aufgabe Datenmodellierung: Prisma-Schema, SQLite-DDL",
+    "classId": 3661,
+    "start": "2026-03-18T13:25:00",
+    "end": "2026-03-18T15:15:00",
+    "date": "2026-03-16"
+  }
+]
+```
+
+### Derive topic text from Git history
+
+```bash
+.venv/bin/python -m webuntis_agent.cli lehrstoff from-git \
+    --class-name 5AHWII --subject SWP1y --date 2026-03-18 --dry-run
+```
+
+This searches the candidate GRG-* repos for commits matching the class and
+date (±10 days, ±30 fallback), prints the commits + full diffs, and proposes
+a topic text. Drop `--dry-run` and add `--period`/`--topic-id` to submit.
+
+### Check absences (Abwesenheiten kontrolliert)
+
+Single period:
+
+```bash
+.venv/bin/python -m webuntis_agent.cli absences check --period 5457498
+```
+
+All open absences for a date range (auto-fetches open periods, checks each):
+
+```bash
+.venv/bin/python -m webuntis_agent.cli absences check-all \
+    --start 2025-09-01 --end 2026-07-05 --delay 1.5
+```
+
+### Reverse-engineer new endpoints (CDP-Recorder)
+
+1. Start Brave with the debug port:
+
+   ```bash
+   scripts/brave-debug.sh
+   ```
+
+2. In Brave, open WebUntis and log in.
+
+3. Start the recorder:
+
+   ```bash
+   .venv/bin/python -m webuntis_agent.recorder
+   ```
+
+4. Perform the action you want to capture (e.g. enter a lesson topic, check
+   absences) in the WebUntis UI as usual.
+
+5. Stop the recorder (Ctrl-C). Inspect `recordings/` for the captured
+   requests, response bodies, and cookies.
+
+---
+
+## How It Works
+
+### Reverse-Engineering Workflow
+
+```
+Brave (CDP :9222)
+  └── recorder.py captures Network + Runtime events
+       └── recordings/*.jsonl (requests, responses, cookies)
+            └── analysis → docs/WEBUNTIS_API.md
+                 └── client.py replays the endpoints
+```
+
+The recorder attaches to Brave via the Chrome DevTools Protocol and
+subscribes to `Network.*` and `Runtime.*` events. It captures:
+
+- `Network.requestWillBeSent` — URL, method, headers, POST body
+- `Network.responseReceived` — status, headers, MIME type
+- `Network.getResponseBody` — full response body (after `loadingFinished`)
+- `Runtime.consoleAPICalled` — all `console.log/error/warn` output
+- `Network.getAllCookies` — session cookies (harvested at session end)
+
+Output goes to `recordings/{timestamp}_network.jsonl`,
+`recordings/{timestamp}_console.jsonl`, and `recordings/{timestamp}_cookies.json`
+(all gitignored — they contain session cookies).
+
+### Fill-Open-Periods Workflow
+
+```
+.env (credentials)
+  └── client.login() → JSESSIONID + schoolname cookies
+       └── client.get_jwt() → Bearer JWT (person_id, tenant_id)
+            └── client.get_open_periods() → list of owed lessons
+                 └── gitlog.get_commits_for_class() → matching commits
+                      └── gitlog.get_commit_diff() → full diffs
+                           └── agent formulates German topic text
+                                └── user confirms → batch-set → WebUntis PUT
+```
+
+### Subject → Repository Mapping
+
+The agent maps WebUntis subject short names to candidate GRG-* repos by
+prefix matching (so `SWP1x`, `SWP1y`, `SWP1` all match `SWP`):
+
+| WebUntis subject | GRG repos |
+|---|---|
+| `POS1` / `POS` | GRG-POSTHEORIE, GRG-JAVA |
+| `SWP1x` / `SWP1y` / `SWP` | GRG-SWP, GRG-CS |
+| `WMC_1` / `WMC` | GRG-WMC |
+| `INFIx` / `INF` | GRG-INFI |
+| `CS` | GRG-CS |
+| `SS` | _(fixed text: "Sprechstunde")_ |
+| `BESP` | _(fixed text: "Bewegung und Sport")_ |
+
+Unknown subjects trigger a warning so the mapping can be extended. See
+`SUBJECT_REPO_MAP` in [`src/webuntis_agent/client.py`](src/webuntis_agent/client.py).
+
+---
+
+## Project Layout
 
 ```
 webuntis-agent/
-  pyproject.toml
-  src/webuntis_agent/
-    recorder.py        # CDP-Recorder: Network + Runtime -> recordings/
-    client.py          # WebUntis API client (replay identified endpoints)
-    cli.py             # CLI entry point
-  scripts/
-    brave-debug.sh      # start Brave with --remote-debugging-port=9222
-  recordings/          # gitignored: captured requests + console logs
-  docs/
-    WEBUNTIS_API.md    # reference doc of known endpoints
-  AGENTS.md
+├── src/webuntis_agent/
+│   ├── recorder.py       # CDP-Recorder: Network + Runtime → recordings/
+│   ├── client.py         # WebUntis API client (login, JWT, REST, absences)
+│   ├── gitlog.py         # GRG-* git-log analysis (split classes, diffs)
+│   └── cli.py            # CLI: lehrstoff + absences subcommands
+├── scripts/
+│   ├── brave-debug.sh     # start Brave with --remote-debugging-port=9222
+│   └── show-cookies.py    # inspect harvested cookies
+├── tests/
+│   └── test_gitlog.py     # 8 tests: split classes, February change, examples
+├── docs/
+│   ├── WEBUNTIS_API.md    # authoritative endpoint reference
+│   └── ai/                # knowledge persistence (DECISIONS, PITFALLS, …)
+├── .opencode/skills/
+│   └── fill-open-periods/SKILL.md  # opencode skill for the full workflow
+├── .env.example          # template for credentials (copy to .env)
+├── .gitignore            # ignores .env, .venv, recordings/, *.jsonl
+├── AGENTS.md             # agent instructions + knowledge bootstrap
+└── pyproject.toml        # Python package config
 ```
 
-## Status
+---
 
-Phase 1-3 in progress: skeleton + CDP-Recorder.
+## Key Design Decisions
+
+- **No hardcoded constants** — teacherId, Tenant-Id, and School-Year-Id are
+  all derived at runtime from the JWT and REST API.
+- **Python + httpx for replay** (not Playwright) — once endpoints are known,
+  pure HTTP calls suffice; no browser needed for normal operation.
+- **Skill-based architecture** — an opencode skill orchestrates the CLI
+  calls; the agent (LLM) holds git-log context in memory and formulates
+  topic texts from diffs with human confirmation before submission.
+- **±10/±30-day git-log window** — catches commits made shortly after the
+  lesson, with a wider fallback for longer delays.
+
+See [`docs/ai/DECISIONS.md`](docs/ai/DECISIONS.md) for the full list.
+
+---
+
+## License
+
+Private project. Not for redistribution.
+
+[WebUntis]: https://www.untis.at/de/produkte/webuntis-die-online-erweiterung
+[HTL Spengergasse]: https://www.spengergasse.at
+[GRG-*]: https://github.com/georgernstgraf?tab=repositories&q=GRG
+[opencode]: https://opencode.ai
