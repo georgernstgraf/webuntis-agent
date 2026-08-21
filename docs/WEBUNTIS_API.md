@@ -106,14 +106,30 @@ purpose and maps to a CLI command where applicable.
 
 ## CLI
 
-- `webuntis-agent lehrstoff list --start <yyyy-MM-dd> --end <yyyy-MM-dd> [--json]`
-  — list open periods (JSON: periodId, topicId, class, subject, date, lsId)
+- `webuntis-agent lehrstoff status --start <d> --end <d> [--json]`
+  — quick overview of open periods grouped by subject/class
+- `webuntis-agent lehrstoff fill --start <d> --end <d> [--dry-run] [--file <json>]`
+  — fetch open periods + git diffs in one call; dry-run outputs JSON with
+  commits/diffs/proposedText per block; without dry-run submits a confirmed
+  batch JSON (--file)
+- `webuntis-agent lehrstoff verify --start <d> --end <d> [--json]`
+  — check which open periods truly have no topic text vs only missing absence check
+- `webuntis-agent lehrstoff fill-fixed --start <d> --end <d> [--dry-run]`
+  — fill SS/BESP periods with their fixed text (no git-log needed)
+- `webuntis-agent lehrstoff list --start <d> --end <d> [--json]`
+  — list open periods (JSON includes lessonDetailsUrl)
 - `webuntis-agent lehrstoff get --period <id>`
   — show existing topic for a period
-- `webuntis-agent lehrstoff set --period <id> --topic-id <id> --text "<...>"`
-  — write the topic (auto-login via `.env`)
+- `webuntis-agent lehrstoff set --period <id> --text-file <path>`
+  — write single topic (UTF-8 safe via file)
+- `webuntis-agent lehrstoff batch-set --file <json> [--delay 1.0]`
+  — bulk write from JSON file
 - `webuntis-agent lehrstoff from-git --class-name <c> --subject <s> --date <d> [--dry-run]`
-  — derive text from GRG-* git logs + diffs for the subject's candidate repos
+  — derive text from GRG-* git logs + diffs
+- `webuntis-agent absences check --period <id>`
+  — check absences for one period
+- `webuntis-agent absences check-all --start <d> --end <d> [--delay 1.5]`
+  — auto-fetch open periods and check all absences
 - `--school-year-id <N>` overrides the auto-detected schoolyear
 
 ## Subject -> GRG repo mapping

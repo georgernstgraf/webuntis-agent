@@ -19,111 +19,100 @@ git history, and submit each via the webuntis-agent CLI.
 
 ## Workflow
 
-1. **Fetch open periods as JSON** for the current schoolyear (default
-   since Sep 1 of last year to Jul 5 of this year; adjust on request):
+1. **Run `lehrstoff fill --dry-run`** to fetch all open periods and
+   pre-load git commits + diffs in one call:
 
    ```bash
    cd ~/repos/georgernstgraf/webuntis-agent
-   .venv/bin/python -m webuntis_agent.cli lehrstoff list \
-       --start 2025-09-01 --end 2026-07-05 --json
+   .venv/bin/python -m webuntis_agent.cli lehrstoff fill \
+       --start 2025-09-01 --end 2026-07-05 --dry-run
    ```
 
-2. **Inspect the JSON.** Each entry has:
-   `periodId`, `topicId`, `class`, `subject` (short name like `SWP1y`,
-   `POS1`, ...), `date`, `time`, `lsId`.
+   This outputs a JSON object with two arrays:
 
-3. **Resolve candidate repos** for each period's `subject` using the
-   `SUBJECT_REPO_MAP` in `src/webuntis_agent/client.py`. If the subject
-   is unknown (not in the map):
-   - Warn the user: "Subject `<X>` is not mapped — add it to
-     `SUBJECT_REPO_MAP` in `src/webuntis_agent/client.py`."
-   - Collect it in a "skipped" list for the final report.
-   - Skip that period.
+   - `blocks`: one entry per day-block (class + subject + date), each with:
+     - `periodId`, `topicId`, `class`, `classId`, `subject`, `date`, `time`
+     - `start`, `end` (block ISO timestamps for `lessonDetailsUrl`)
+     - `blockPeriods`: list of all periodIds in the block
+     - `source`: `"git"` | `"fixed"` | `"dummy"` | `"skipped"`
+     - `proposedText`: raw text from commit messages (refine this!)
+     - `commits`: array of `{repo, hash, date, message, files[], diff}` per commit
 
-4. **For each remaining period**, run the git-log + diff fetch via the
-   CLI dry-run to see commits and diffs for that class/date/subject:
+   - `skipped`: periods with unknown subjects (no repo mapping)
 
-   ```bash
-   .venv/bin/python -m webuntis_agent.cli lehrstoff from-git \
-       --class-name <class> --subject <short> --date <yyyy-MM-dd> \
-       --dry-run
-   ```
+   Fixed-text subjects (SS="Sprechstunde", BESP="Bewegung und Sport") are
+   already filled with their text — no formulation needed.
 
-   This prints the matching commits (across the candidate repos only),
-   followed by the full `git show` diff of each commit (truncated to
-   4000 bytes per commit). Read the diffs — they contain the actual
-   taught content (file contents, new functions, schema definitions,
-   exercise texts, etc.), not just commit messages.
-
-5. **Formulate the Lehrstoff text** for each period from:
-   - The commit diffs (what was added/changed — e.g. a Prisma schema,
-     a regex exercise, a Deno project skeleton).
-   - The file paths (subject-area hint, e.g. `5ahwii_Y/Matura-Prisma.md`).
-   - The WebUntis subject (e.g. `SWP1y` = Softwareentwicklung und
-     Projektmanagement, Y-Gruppe) and the date.
+2. **Formulate the Lehrstoff text** for each block from:
+   - The commit `diff` fields (what was added/changed — e.g. a Prisma
+     schema, a regex exercise, a Deno project skeleton).
+   - The `files` arrays (subject-area hint, e.g. `Matura-Prisma.md`).
+   - The `subject` and `subjectLong` (e.g. `SWP1y` = Softwareentwicklung
+     und Projektmanagement, Y-Gruppe) and the `date`.
    - Keep it concise and factual (German, e.g. "Prisma-Schema für
      Matura-Projekt; Deno-Setup; VSCode-Konfiguration" rather than
      raw commit messages like "std; fast commit").
+   - The `proposedText` is a rough starting point — improve it.
    - For block periods (same `lsId`), use the same text — one PUT
-     updates the whole block, so duplicate entries are fine.
+     updates the whole block.
 
-6. **Present a confirmation table** to the user:
+3. **Present a confirmation table** to the user:
 
    | periodId | class | subject | date | proposed text |
    |---|---|---|---|---|
 
-   Group block periods (same `lsId`) together. List skipped periods
-   (unknown subjects) at the bottom.
+   List skipped periods (unknown subjects) at the bottom.
 
-7. **On user confirmation** (bulk "all ok" or per-row edits), write a
+4. **On user confirmation** (bulk "all ok" or per-row edits), write a
    JSON file with the confirmed entries:
 
    ```json
    [
-     {"periodId": 5458590, "topicId": 2296724, "text": "Matura-Aufgabe Datenmodellierung: Prisma-Schema, SQLite-DDL/-DML, Seed-Script"},
+     {"periodId": 5458590, "topicId": 2296724, "text": "...",
+      "classId": 3661, "start": "2026-03-18T13:25:00",
+      "end": "2026-03-18T15:15:00", "date": "2026-03-16"},
      ...
    ]
    ```
 
-   Write it to `/tmp/opencode/batch_<timestamp>.json` (or another
-   gitignored location — never inside the repo, to avoid accidental
-   commits of lesson content).
+   Write it to `/tmp/opencode/batch_<timestamp>.json`.
 
-   Then submit all entries in one call:
+5. **Submit** all entries:
 
    ```bash
    .venv/bin/python -m webuntis_agent.cli lehrstoff batch-set \
-       --file /tmp/opencode/batch_<timestamp>.json
+       --file /tmp/opencode/batch_<timestamp>.json --delay 1.0
    ```
 
    - One PUT per entry; block partners are auto-updated by the server.
-   - Use `--text-file` (or `batch-set` with a JSON file) instead of
-     `--text "..."` to avoid shell-quoting issues with UTF-8 (Umlaute
-     like HÜ, ä, ö, ü get mangled when passed via `--text` in bash).
-   - If `topicId` is in the list output, include it; otherwise omit it
-     and `batch-set` will resolve it via `getLessonTopic`.
+   - `--delay 1.0` avoids triggering IP rate-limiting.
+   - `topicId` null → server creates new topic (id=0).
+   - `classId`/`start`/`end`/`date` enable `lessonDetailsUrl` output.
 
-8. **Report** which periods were submitted successfully, which failed,
-   and which were skipped (unknown subjects). Add new subjects to
-   `SUBJECT_REPO_MAP` when the user confirms what repo they belong to.
-   For each successfully submitted period, include the
-   `lessonDetailsUrl` from the `batch-set` output — the user can click
-   it to verify the entry in the browser (it shows under "Lehrstoff").
+6. **Check absences** for all remaining open periods:
 
-   The `batch-set` JSON file should contain `classId`, `start`, `end`,
-   `date` alongside `periodId`, `topicId`, `text` for each entry so
-   that the URLs are emitted in the result. Use the values from the
-   `lehrstoff list --json` output (`classId`, `_start_iso`/`_end_iso`
-   block bounds, `date`).
+   ```bash
+   .venv/bin/python -m webuntis_agent.cli absences check-all \
+       --start 2025-09-01 --end 2026-07-05 --delay 1.5
+   ```
+
+7. **Report** which periods were submitted, failed, or skipped. Include
+   `lessonDetailsUrl` from the `batch-set` output for browser verification.
+   Add new subjects to `SUBJECT_REPO_MAP` when the user confirms the repo.
+
+## Helper commands
+
+- `lehrstoff status --start ... --end ...` — quick overview (by subject/class)
+- `lehrstoff verify --start ... --end ...` — check which periods truly
+  have no text vs only missing absence check
+- `lehrstoff fill-fixed --start ... --end ...` — fill SS/BESP only
+  (no git-log needed)
 
 ## Notes
 
-- The git-log scan is cheap (`git log` over ±10 days with a ±30-day
-  fallback) and scoped to 2-4 candidate repos per subject, so O(N)
-  over open periods is acceptable — no caching layer required.
-- Block periods (same `lsId`) only need one PUT; the WebUntis server
-  returns all updated topics in the block response.
+- The `fill --dry-run` call replaces the old manual workflow
+  (`list --json` + `from-git` per block). One call does it all.
+- Block periods (same `lsId`) only need one PUT.
 - The `.env` file is gitignored and contains the WebUntis password —
   never print it or commit it.
-- `recordings/` contains session cookies and (for the login recording)
-  the plaintext password — treat as sensitive, delete after analysis.
+- `recordings/` contains session cookies — treat as sensitive.
