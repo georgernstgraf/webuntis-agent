@@ -1,35 +1,39 @@
 # Project State
 
-Current status as of 2026-08-22 (evening).
+Current status as of 2026-09-14.
 
 ## Current Focus
-New feature "Schüler-Aufnahme" (student lesson attendance) — API fully
-reverse-engineered and implemented, write pending user confirmation.
-Open question: which of the two Badawi brothers was meant.
+Student attendance (Schüler-Aufnahme) feature is complete and validated
+against the live API.
 
 ## Completed (this cycle)
+- [x] Badawi-Verwechslung geklärt und korrigiert: falscher Bruder
+      (Al Badawi Mahmoud, 19261) aus POS1 (lsId 215940) entfernt,
+      richtiger Schüler (Badawi Mhd Nour, 19405) aufgenommen
+- [x] New CLI subcommand `students edit` (single-write add/remove,
+      dry-run default, payload export via --out)
+- [x] Write-Pfad `submitStudentLessonPeriodData` erstmals live genutzt
+      und per Matrix-Re-Read validiert (result=null = success)
+- [x] Klarstellung: Nour gehört in POS1 (POS-Theorie), NICHT in WMC_1;
+      WMC_1 (lsId 218839) blieb unangetastet
+
+## Earlier (2026-08-22 cycle)
 - [x] School year 2025/26 fully closed: 418 periods Lehrstoff + Absenzen
-- [x] Case-sensitivity fix, GRG-CS→SWP mapping, SS/BESP fixed texts
-- [x] lehrstoff status/fill/verify/fill-fixed CLI commands (replace heredoc python)
-- [x] Code review fixes (topic=None crash, dead code, imports, context manager)
-- [x] English README, repo made public, all commits pushed to GitHub
-- [x] Phase 1: API surface extracted from SPA bundles (253 routes) → docs
-- [x] Phase 2: legacy class-register iframe app mapped; participant mask
-      found (lessonstudentlist.do); matrix read-call validated end-to-end
-      (CSRF → setSchoolyear → jsonStudentgroupService)
-- [x] students add CLI (dry-run default) implemented, payload export works
-- [x] Verification: manually added student in POS1 is "Al Badawi Mahmoud"
-      (19261) — NOT the requested "Badawi Mhd Nour" (19405)
+- [x] lehrstoff status/fill/verify/fill-fixed CLI commands
+- [x] Phase 1/2 API reverse-engineering (SPA routes, class-register
+      iframe, lessonstudentlist.do, student matrix read-call)
+- [x] students add CLI (dry-run default)
 
 ## Pending
-- [ ] User confirms which Badawi brother is the correct student
-- [ ] First real write via submitStudentLessonPeriodData (validation)
-- [ ] WMC_1 enrollment after clarification
+- None open.
 
 ## Blockers
-- None (write blocked only by user confirmation)
+- None.
+
+## Notes
+- Lesson ids 215940 (POS1) / 218839 (WMC_1) sind im Schuljahr 2026/27
+  stabil gültig; Klassenregister-Klasse der Lektion ist 4107 (21 Schüler,
+  17 attending), externe Aufnahmen haben klasse 4137 (5BAIF).
 
 ## Next Session Suggestion
-1. Resolve the Badawi brother question (see HANDOFF.md)
-2. Execute/validate the first write, verify in browser
-3. Enroll in WMC_1 if requested
+- Nothing queued; new feature requests as they come up.

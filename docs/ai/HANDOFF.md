@@ -1,17 +1,19 @@
 Open tasks:
 
-1. [ ] Student-Verwechslung klären: In POS1 (lsId 215940) wurde händisch
-   "Al Badawi Mahmoud" (id=19261, 5BAIF) aufgenommen — angefragt war aber
-   "Badawi Mhd Nour" (id=19405, 5BAIF). User muss im Browser prüfen, wer
-   der richtige Schüler ist. Korrektur wäre per `students add --lsid
-   215940 --class-id 4107 --student-id 19405 --no-dry-run` möglich
-   (Write braucht explizite Freigabe); ggf. Rücknahme der falschen
-   Aufnahme (attendedPeriods auf [] setzen) klären.
-2. [ ] WMC_1 (lsId 218839): Badawi Nour ist dort noch gar nicht enthalten
-   (0 attending von der falschen Person auch nicht). Nach Klärung von 1.
-   ggf. Aufnahme in WMC_1.
-3. [ ] Write-Pfad `submitStudentLessonPeriodData` ist ungetestet (nur
-   abgeleitet aus Widget-Code + Read-Call validiert). Erster echter
-   Write gleichzeitig als Validierung werten.
+(None)
 
-Last updated: 2026-08-22
+Recently closed (2026-09-14):
+
+1. [x] Badawi-Verwechslung korrigiert: POS1 (lsId 215940) hatte fälschlich
+   "Al Badawi Mahmoud" (19261, klasse 4137) — User bestätigte: richtig ist
+   "Badawi Mhd Nour" (19405), und zwar in POS1 (POS-Theorie), NICHT in WMC.
+   Korrektur per `students edit --lsid 215940 --class-id 4107
+   --add-student-id 19405 --remove-student-id 19261 --no-dry-run`.
+   Verifiziert per Matrix-Re-Read: Mahmoud 0 Termine, Nour alle 18
+   (2026-09-11 .. 2027-01-29), 17 Klassen-Schüler (klasse 4107) unverändert.
+2. [x] WMC_1-Aufnahme (lsId 218839) gestrichen: Nour gehört laut User
+   ausdrücklich nicht in WMC. WMC_1 wurde nie beschrieben.
+3. [x] Write-Pfad `submitStudentLessonPeriodData` validiert: erster echter
+   Write lief erfolgreich (result=null), nachfolgender Re-Read bestätigt.
+
+Last updated: 2026-09-14

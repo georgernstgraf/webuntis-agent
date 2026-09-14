@@ -677,6 +677,89 @@ def cmd_students_add(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_students_edit(args: argparse.Namespace) -> int:
+    """Edit a lesson's attendance: add and/or remove external students.
+
+    Builds the full students payload (lesson class students unchanged,
+    other attending students unchanged, removed students set to
+    attendedPeriods=[], added students set to all lesson dates) and
+    submits it via submitStudentLessonPeriodData. --dry-run (default)
+    writes the payload JSON to --out and does NOT submit.
+    """
+    from pathlib import Path
+    c = _make_client(args)
+    matrix = c.get_student_lesson_period_matrix(args.lsid)
+    result = matrix["result"]
+    all_students = result["allStudents"]
+    lesson_dates = sorted({p["date"] for p in result["lessonPeriods"]})
+
+    add_ids = args.add_student_id or []
+    remove_ids = args.remove_student_id or []
+    if not add_ids and not remove_ids:
+        print("nothing to do: pass --add-student-id and/or "
+              "--remove-student-id", file=sys.stderr)
+        return 2
+    overlap = set(add_ids) & set(remove_ids)
+    if overlap:
+        print(f"ids both added and removed: {sorted(overlap)}",
+              file=sys.stderr)
+        return 2
+    by_id = {s["id"]: s for s in all_students}
+    for sid in add_ids + remove_ids:
+        if sid not in by_id:
+            print(f"student id {sid} not found in matrix", file=sys.stderr)
+            return 2
+
+    keep = [
+        {"id": s["id"], "attendedPeriods": list(s["attendedPeriods"])}
+        for s in all_students
+        if s["id"] not in remove_ids
+        and (s["klasse"] == args.class_id or s["attendedPeriods"])
+    ]
+    for sid in remove_ids:
+        keep.append({"id": sid, "attendedPeriods": []})
+    for sid in add_ids:
+        keep.append({"id": sid, "attendedPeriods": lesson_dates})
+
+    payload = {
+        "mainStudentgroupId": result["mainStudentgroupId"],
+        "lessonId": args.lsid,
+        "students": keep,
+        "startDate": result["startDate"],
+        "endDate": result["endDate"],
+    }
+
+    summary = {
+        "added": [by_id[sid]["name"] for sid in add_ids],
+        "removed": [by_id[sid]["name"] for sid in remove_ids],
+        "lessonDates": lesson_dates,
+        "payloadStudents": len(keep),
+        "payload": payload if args.verbose else "(use --verbose to dump)",
+    }
+    if args.out:
+        Path(args.out).write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            encoding="utf-8")
+        summary["writtenTo"] = args.out
+
+    if args.dry_run:
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
+        print(
+            f"\nDRY RUN: +{[by_id[i]['name'] for i in add_ids]} "
+            f"-{[by_id[i]['name'] for i in remove_ids]} "
+            f"on lesson {args.lsid} ({len(lesson_dates)} lesson dates); "
+            f"payload has {len(keep)} students. "
+            f"Submit with --no-dry-run.", file=sys.stderr)
+        return 0
+
+    res = c.submit_student_lesson_period_data(
+        payload["lessonId"], payload["mainStudentgroupId"],
+        payload["students"], payload["startDate"], payload["endDate"],
+    )
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    return 0
+
+
 def cmd_check_absences(args: argparse.Namespace) -> int:
     """Check absences for a single period."""
     c = _make_client(args)
@@ -866,6 +949,29 @@ def main() -> int:
                          help="write the submit payload JSON to this file")
     stu_add.add_argument("--verbose", action="store_true")
     stu_add.set_defaults(func=cmd_students_add)
+
+    stu_edit = stu_sub.add_parser(
+        "edit",
+        help="add/remove students in a lesson's attendance (single write)")
+    stu_edit.add_argument("--lsid", type=int, required=True,
+                          help="lesson id (lsId) of the target lesson")
+    stu_edit.add_argument("--class-id", type=int, required=True,
+                          help="class id of the lesson's own class (students "
+                               "kept unchanged)")
+    stu_edit.add_argument("--add-student-id", type=int, action="append",
+                          default=None,
+                          help="student id to enroll (repeatable)")
+    stu_edit.add_argument("--remove-student-id", type=int, action="append",
+                          default=None,
+                          help="student id to un-enroll (attendedPeriods "
+                               "reset to [], repeatable)")
+    stu_edit.add_argument("--dry-run", action="store_true", default=True)
+    stu_edit.add_argument("--no-dry-run", dest="dry_run",
+                          action="store_false")
+    stu_edit.add_argument("--out", default=None,
+                          help="write the submit payload JSON to this file")
+    stu_edit.add_argument("--verbose", action="store_true")
+    stu_edit.set_defaults(func=cmd_students_edit)
 
     args = p.parse_args()
     if args.cmd == "record":
