@@ -16,6 +16,9 @@ against the live API.
       und per Matrix-Re-Read validiert (result=null = success)
 - [x] Klarstellung: Nour gehört in POS1 (POS-Theorie), NICHT in WMC_1;
       WMC_1 (lsId 218839) blieb unangetastet
+- [x] Rana Aaron (21616) und Steindl Jonathan (21592) aus POS1 und WMC_1
+      entfernt (laut User gehören beide in keines der beiden Fächer;
+      je 1 Write, verifiziert per Matrix-Re-Read)
 
 ## Earlier (2026-08-22 cycle)
 - [x] School year 2025/26 fully closed: 418 periods Lehrstoff + Absenzen
@@ -33,7 +36,7 @@ against the live API.
 ## Notes
 - Lesson ids 215940 (POS1) / 218839 (WMC_1) sind im Schuljahr 2026/27
   stabil gültig; Klassenregister-Klasse der Lektion ist 4107 (21 Schüler,
-  17 attending), externe Aufnahmen haben klasse 4137 (5BAIF).
+  15 attending), externe Aufnahmen haben klasse 4137 (5BAIF).
 
 ## Next Session Suggestion
 - Nothing queued; new feature requests as they come up.

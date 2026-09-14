@@ -15,5 +15,10 @@ Recently closed (2026-09-14):
    ausdrücklich nicht in WMC. WMC_1 wurde nie beschrieben.
 3. [x] Write-Pfad `submitStudentLessonPeriodData` validiert: erster echter
    Write lief erfolgreich (result=null), nachfolgender Re-Read bestätigt.
+4. [x] Rana Aaron (21616) und Steindl Jonathan (21592) — beide Klasse 4107,
+   fälschlich mit allen 18 Terminen in POS1 UND WMC_1 — aus beiden
+   Lektionen entfernt (zwei Writes, je ein `students edit --remove-student-id
+   21616 --remove-student-id 21592`). Verifiziert: beide 0 Termine,
+   POS1 attending 16 (15 Klasse + Nour), WMC_1 attending 15 (nur Klasse).
 
 Last updated: 2026-09-14
