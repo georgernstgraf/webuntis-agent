@@ -434,3 +434,77 @@ class Client:
         )
         r.raise_for_status()
         return r.json()
+
+    # ----- Student Lesson Period Matrix (Schüler-Aufnahme) --------------
+
+    def _jsonrpc_web(self, service: str, method: str, params: list,
+                     id_: int = 0) -> dict[str, Any]:
+        """Call a legacy jsonrpc_web service (needs fresh CSRF + setSchoolyear)."""
+        # fresh CSRF token from embedded.do
+        r = _request_with_retry(
+            self.http, "GET",
+            f"{self.host}/WebUntis/embedded.do",
+            params={"showSidebar": "true"},
+            headers={"Cookie": self.session.cookie_header},
+        )
+        r.raise_for_status()
+        m = re.search(r'"csrfToken":"([^"]+)"', r.text)
+        if not m:
+            raise RuntimeError("could not extract csrfToken from embedded.do")
+        csrf = m.group(1)
+
+        common_headers = {
+            "Cookie": self.session.cookie_header,
+            "X-CSRF-TOKEN": csrf,
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": f"{self.host}/WebUntis/embedded.do",
+            "Origin": self.host,
+        }
+        # setSchoolyear is required before other jsonrpc_web calls
+        sy = self.resolve_schoolyear_id()
+        r0 = _request_with_retry(
+            self.http, "POST",
+            f"{self.host}/WebUntis/jsonrpc_web/jsonCalendarService",
+            json={"id": id_, "method": "setSchoolyear",
+                  "params": [sy], "jsonrpc": "2.0"},
+            headers=common_headers,
+        )
+        r0.raise_for_status()
+
+        r = _request_with_retry(
+            self.http, "POST",
+            f"{self.host}/WebUntis/jsonrpc_web/{service}",
+            json={"id": id_, "method": method,
+                  "params": params, "jsonrpc": "2.0"},
+            headers=common_headers,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def get_student_lesson_period_matrix(self, ls_id: int) -> dict[str, Any]:
+        """Load the attendance matrix for a lesson (all school students)."""
+        return self._jsonrpc_web(
+            "jsonStudentgroupService", "getStudentLessonPeriodMatrix", [ls_id],
+        )
+
+    def submit_student_lesson_period_data(
+        self, ls_id: int, main_studentgroup_id: int,
+        students: list[dict[str, Any]],
+        start_date: int, end_date: int,
+    ) -> dict[str, Any]:
+        """Save attendance changes for a lesson.
+
+        students: [{"id": <studentId>, "attendedPeriods": [<YYYYMMDD>, ...]}]
+        """
+        payload = {
+            "mainStudentgroupId": main_studentgroup_id,
+            "lessonId": ls_id,
+            "students": students,
+            "startDate": start_date,
+            "endDate": end_date,
+        }
+        return self._jsonrpc_web(
+            "jsonStudentgroupService", "submitStudentLessonPeriodData",
+            [payload],
+        )

@@ -39,3 +39,21 @@ Read this file carefully before making changes in affected areas.
 - **No JWT for absences**: The `classregpage.do` endpoint uses session cookie + CSRF, not Bearer JWT. Different from the lesson-topic REST endpoints.
 - **Block partner auto-marked**: One POST marks both periods in the block (response contains `args:[[periodId, blockPartnerId]]`).
 - **X-CSRF-TOKEN header + _csrf body**: Both must carry the same token value. Missing either one causes a 403.
+
+## Class Register / Students
+
+- **Student lists are admin-only**: `getStudents` (JSON-RPC) returns 0 and
+  `/api/rest/view/v1/students` returns 500 for teacher accounts. Use
+  `lessonstudentlist.do?lsid=X` (lesson participant page) to obtain
+  student ids of a class, or `students/overview` for class ids only.
+- **The class register is a legacy JSP app in an iframe** (`embedded.do#...`),
+  NOT part of the SPA. Its routes (`lessonstudentlist.do`,
+  `classregpage.do`) are NOT in the SPA bundles — hash routes are mapped
+  in `webuntis-embedded/main.js` on the Dojo CDN.
+- **Dojo CDN needs Referer**: `https://content.webuntis.com/WebUntis/static/...`
+  returns 403 without `Referer: {host}/WebUntis/embedded.do`.
+- **`ajaxCommand` params on `.do` pages are ignored** (server returns the
+  full page regardless) — except the ones actually wired server-side
+  (e.g. `getEmails` used as TitlePane href).
+- **Schoolyear ids change every year** (21 = 2025/26, 24 = 2026/27 — gap
+  exists). Always resolve dynamically via schoolyears date-range match.

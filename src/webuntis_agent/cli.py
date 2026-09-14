@@ -593,6 +593,90 @@ def cmd_lehrstoff_fill_fixed(args: argparse.Namespace) -> int:
     return 0 if ok == len(results) else 1
 
 
+def cmd_students_add(args: argparse.Namespace) -> int:
+    """Add a student to a lesson's attendance (Schüler-Aufnahme).
+
+    Loads the student-lesson-period matrix for the lesson, sets the
+    student's attendedPeriods to all lesson dates, and submits the
+    combined payload (lesson class students unchanged + the added
+    student). --dry-run (default) writes the payload JSON to --out and
+    does NOT submit.
+    """
+    from pathlib import Path
+    c = _make_client(args)
+    matrix = c.get_student_lesson_period_matrix(args.lsid)
+    result = matrix["result"]
+    all_students = result["allStudents"]
+    lesson_dates = sorted({p["date"] for p in result["lessonPeriods"]})
+
+    # resolve the added student by id or name search
+    target = None
+    if args.student_id:
+        target = next((s for s in all_students if s["id"] == args.student_id), None)
+        if target is None:
+            print(f"student id {args.student_id} not found in matrix",
+                  file=sys.stderr)
+            return 2
+    else:
+        needle = args.student_name.lower()
+        hits = [s for s in all_students
+                if needle in s["name"].lower()]
+        if len(hits) != 1:
+            for h in hits:
+                print(f"  candidate: id={h['id']} {h['name']} klasse={h['klasse']}",
+                      file=sys.stderr)
+            print(f"student name '{args.student_name}' matched {len(hits)} students; "
+                  "use --student-id", file=sys.stderr)
+            return 2
+        target = hits[0]
+
+    # students of the lesson's class (unchanged) + the added student
+    lesson_class = args.class_id
+    students_payload = [
+        {"id": s["id"], "attendedPeriods": list(s["attendedPeriods"])}
+        for s in all_students if s["klasse"] == lesson_class
+    ]
+    target_entry = {"id": target["id"], "attendedPeriods": lesson_dates}
+    students_payload.append(target_entry)
+
+    payload = {
+        "mainStudentgroupId": result["mainStudentgroupId"],
+        "lessonId": args.lsid,
+        "students": students_payload,
+        "startDate": result["startDate"],
+        "endDate": result["endDate"],
+    }
+
+    summary = {
+        "student": target,
+        "lessonDates": lesson_dates,
+        "payloadStudents": len(students_payload),
+        "payload": payload if args.verbose else "(use --verbose to dump)",
+    }
+    if args.out:
+        Path(args.out).write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            encoding="utf-8")
+        summary["writtenTo"] = args.out
+
+    if args.dry_run:
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
+        print(
+            f"\nDRY RUN: {target['name']} (id={target['id']}) would attend "
+            f"{len(lesson_dates)} lesson dates of lesson {args.lsid}; "
+            f"payload has {len(students_payload)} students "
+            f"(class {lesson_class} unchanged). "
+            f"Submit with --no-dry-run.", file=sys.stderr)
+        return 0
+
+    res = c.submit_student_lesson_period_data(
+        payload["lessonId"], payload["mainStudentgroupId"],
+        payload["students"], payload["startDate"], payload["endDate"],
+    )
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    return 0
+
+
 def cmd_check_absences(args: argparse.Namespace) -> int:
     """Check absences for a single period."""
     c = _make_client(args)
@@ -761,6 +845,27 @@ def main() -> int:
     abs_all.add_argument("--end", type=_date_arg, required=True)
     abs_all.add_argument("--delay", type=float, default=1.0)
     abs_all.set_defaults(func=cmd_check_all_absences)
+
+    # -- students --
+    stu = sub.add_parser("students", help="Schülerverwaltung (lesson attendance)")
+    stu_sub = stu.add_subparsers(dest="sub", required=True)
+
+    stu_add = stu_sub.add_parser("add",
+                                 help="add a student to a lesson's attendance")
+    stu_add.add_argument("--lsid", type=int, required=True,
+                         help="lesson id (lsId) of the target lesson")
+    stu_add.add_argument("--class-id", type=int, required=True,
+                         help="class id of the lesson's own class (students "
+                              "kept unchanged)")
+    stu_add.add_argument("--student-id", type=int, default=None)
+    stu_add.add_argument("--student-name", default=None,
+                         help="search by (partial) name; needs unique match")
+    stu_add.add_argument("--dry-run", action="store_true", default=True)
+    stu_add.add_argument("--no-dry-run", dest="dry_run", action="store_false")
+    stu_add.add_argument("--out", default=None,
+                         help="write the submit payload JSON to this file")
+    stu_add.add_argument("--verbose", action="store_true")
+    stu_add.set_defaults(func=cmd_students_add)
 
     args = p.parse_args()
     if args.cmd == "record":

@@ -214,3 +214,107 @@ The CLI emits this URL in:
 - Note: No JWT needed — uses session cookie + CSRF only. Block partner is auto-marked.
 - CLI: `webuntis-agent absences check --period <id>`
 - CLI: `webuntis-agent absences check-all --start <d> --end <d> [--delay 1.5]`
+
+## Discovered API Surface (SPA bundles)
+
+The WebUntis SPA loads JS bundles that contain ALL API routes the UI can
+call. Extraction method: login → `GET /` → parse `/assets/*.js` URLs →
+download bundles → regex-extract paths. Bundles saved under
+`/tmp/opencode/bundles/` (not in repo).
+
+Key route groups (full list in `/tmp/opencode/bundles/`, extract via
+regex `/api/rest/view/v\d+...`):
+
+- `students/{id}/lessons`, `students/{id}/change-class`, `students/{id}/form`,
+  `students/{id}/class-history`, `students/overview` — student admin
+  (admin role only; teachers get 500/0 results)
+- `classreg/absences`, `classreg/lesson-topics`, `classreg/open-periods` — known
+- `messages/*`, `exams/*`, `timetable/*`, `tt/horizons/*` — other modules
+
+## Class Register Legacy App (iframe)
+
+The class register is a legacy JSP app loaded in an iframe:
+`/WebUntis/embedded.do#<hash-route>`. Hash routes (from SPA bundle
+`webuntis-embedded/main.js`):
+
+- `#classregpage?ttid={periodId}&isBlockSelected={bool}` — class register page
+  (absences; documented above)
+- `#lessonstudentlist.do?lsid={lessonId}` — "Schüler*innen im Unterricht"
+  (lesson participant list); directly accessible at
+  `/WebUntis/lessonstudentlist.do?lsid={lsId}`
+- `#studentlessonperiodmatrix?lessonId={lessonId}` — student-period
+  assignment matrix; widget:
+  `grupet/widget/app/studentlessonperiodmatrix/StudentLessonPeriodMatrixPage`
+
+Dojo CDN: `https://content.webuntis.com/WebUntis/static/2027.1.6/js/`
+(needs `Referer: {host}/WebUntis/embedded.do` header, else 403).
+Widget `grupet/widget/lesson/LessonStudentList.js` = only report/message
+buttons — add/remove student logic is in `StudentLessonPeriodMatrixPage`.
+
+## Students / Classes (current data, schoolyear 24 = 2026/27)
+
+- Current schoolyear is resolved dynamically (was 21 for 2025/26, now
+  24 for 2026/27 — do NOT hardcode).
+- `GET /WebUntis/api/rest/view/v1/students/overview` (teacher OK):
+  `{schoolyears:[{schoolYear:{id,name,dateRange}, isCurrentSchoolYear, classes:[{id,name,startDate}]}]}`
+  — class ids per schoolyear. 3BAIF=4107, 5BAIF=4137 (SY24).
+- `getStudents` (JSON-RPC) returns 0 for teachers; `/students` REST is
+  admin-only (500).
+- Lesson participant list page (`lessonstudentlist.do?lsid=X`) contains:
+  - `students:[{elementId:"5.<studentId>", userIds:[<userId>,...]}]`
+    in `data-dojo-props`
+  - per-student `studentId` in onclick: `marklist?lsId=X&studentId=Y`
+  - `multipleMarkEntryDialogArgs` with `lsId`, `periodId`,
+    `studentgroup`, `subject`, `klassen`, `students[]`
+  - NO add/remove buttons — the add mask is the
+    StudentLessonPeriodMatrix widget (next to explore).
+- Teacher's lessons per class via
+  `GET /WebUntis/api/public/timetable/weekly/data?elementType=1&elementId={classId}&date={yyyy-MM-dd}&formatId=1`
+  — response has `data.result.data.elementPeriods["{classId}"]` (periods
+  with only element IDs) + `data.result.data.elements` (id→name lookup,
+  type 1=class, 2=teacher, 3=subject, 4=room).
+  Example SY24 week 1 for 3BAIF: POS1 lsId=215940 (GRG),
+  WMC_1 lsId=218839 (GRG+LEA).
+
+## Student Lesson Period Matrix (Schüler-Aufnahme / Teilnehmer)
+
+The "add student to lesson" feature. Legacy jsonrpc_web service:
+
+### getStudentLessonPeriodMatrix
+
+- Purpose: load the attendance matrix for a lesson (ALL school students!)
+- Prerequisites (both required, else 403 Access Denied):
+  1. Fresh CSRF: `GET /WebUntis/embedded.do?showSidebar=true` → parse
+     `"csrfToken":"..."` from body
+  2. `POST /WebUntis/jsonrpc_web/jsonCalendarService` body
+     `{"id":0,"method":"setSchoolyear","params":[<schoolyearId>],"jsonrpc":"2.0"}`
+- Method: `POST /WebUntis/jsonrpc_web/jsonStudentgroupService`
+- Headers: `Cookie`, `X-CSRF-TOKEN: <csrf>`, `Content-Type: application/json`,
+  `X-Requested-With: XMLHttpRequest`, `Referer: {host}/WebUntis/embedded.do`
+- Body: `{"id":0,"method":"getStudentLessonPeriodMatrix","params":[<lsId>],"jsonrpc":"2.0"}`
+- Response (200): `{result:{lessonSubject, lessonPeriods:[{id,date,studentCount,...}],
+  startDate, endDate, mainStudentgroupId, allStudents:[{name,id,gender,klasse,
+  attendedPeriods:[YYYYMMDD,...]}], allKlassen, lessonKlassen, lessonTeachers}}`
+- `allStudents` = all ~3600 school students; `attendedPeriods` = list of
+  lesson DATES (int YYYYMMDD) the student attends; empty = not attending.
+
+### submitStudentLessonPeriodData (write!)
+
+- Purpose: save attendance changes for a lesson
+- Same endpoint: `POST /WebUntis/jsonrpc_web/jsonStudentgroupService`
+- Body: `{"id":0,"method":"submitStudentLessonPeriodData","params":[{
+  "mainStudentgroupId":<id>,"lessonId":<lsId>,
+  "students":[{"id":<studentId>,"attendedPeriods":[<dates>]}],
+  "startDate":<YYYYMMDD>,"endDate":<YYYYMMDD>}],"jsonrpc":"2.0"}`
+- Derived from `StudentLessonPeriodMatrixViewModel.getAttendingPeriodData()`:
+  students array = all students of the UI-selected klasse(s) with their
+  attendance lists. Include the lesson's own class unchanged plus the
+  added student (from another class) with full lesson dates.
+
+### Key ids (schoolyear 24 / 2026-27)
+
+- Student "Badawi Mhd Nour": id=19405, klasse=4137 (5BAIF), attendedPeriods=[]
+  (also "Al Badawi Mahmoud" id=19261, same class — likely sibling)
+- 3BAIF lesson POS1: lsId=215940, periodIds 5936072/5936075, mainStudentgroupId 166074
+- 3BAIF lesson WMC_1: lsId=218839 (GRG+LEA)
+- 3BAIF classId=4107 (17 students), 5BAIF classId=4137
