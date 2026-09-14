@@ -118,15 +118,14 @@ def _block_bounds(periods: list[dict]) -> tuple[str, str]:
     return s, e
 
 
-def cmd_lehrstoff_list(args: argparse.Namespace) -> int:
-    c = _make_client(args)
-    sy = c.resolve_schoolyear_id(override=args.school_year_id)
-    data = c.get_open_periods(args.start, args.end, school_year_id=sy)
+def _open_period_entries(c: "object", sy: int, start: str, end: str,
+                         filter_: str = "TOPIC_OR_ABSENCE_OPEN") -> list[dict]:
+    """Fetch open periods and build enriched, flat period entries.
+
+    Shared by `lehrstoff list`, `lessons` and the lsId resolver.
+    """
+    data = c.get_open_periods(start, end, filter_=filter_, school_year_id=sy)
     raw = data.get("periods", [])
-    if not raw:
-        print("[]" if args.json else "(no open periods)")
-        return 0
-    # Build a flat list of period entries, group by lsId for block bounds.
     entries: list[dict] = []
     blocks: dict[int | None, list[dict]] = {}
     for p in raw:
@@ -134,6 +133,16 @@ def cmd_lehrstoff_list(args: argparse.Namespace) -> int:
         cls = per.get("classes", [{}])[0].get("el", {})
         subj = per.get("subject", {}).get("el", {})
         dt = per.get("dtRange", {})
+        teachers = [t["el"] for t in per.get("teachers", []) if t.get("el")]
+        rooms = []
+        for r in per.get("rooms", []):
+            el = r.get("el") or {}
+            org = (r.get("orgEl") or {}).get("name")
+            label = el.get("name", "")
+            if org and org != label:
+                label = f"{label} (org {org})"
+            if label:
+                rooms.append(label)
         entry = {
             "periodId": per.get("id"),
             "topicId": p.get("topicId"),
@@ -147,6 +156,9 @@ def cmd_lehrstoff_list(args: argparse.Namespace) -> int:
             "_end_iso": (dt.get("end") or "").replace(" ", "T"),
             "lsId": per.get("lsId"),
             "hr": per.get("hr"),
+            "teachers": [t.get("name") for t in teachers],
+            "teacherShorts": [t.get("nameShort") for t in teachers],
+            "rooms": rooms,
         }
         entries.append(entry)
         blocks.setdefault(per.get("lsId"), []).append(entry)
@@ -158,6 +170,126 @@ def cmd_lehrstoff_list(args: argparse.Namespace) -> int:
         e["lessonDetailsUrl"] = _lesson_details_url(
             c.host, e["periodId"], e["classId"], bstart, bend, ref_date,
         )
+    return entries
+
+
+def _group_lesson_entries(entries: list[dict]) -> list[dict]:
+    """Group period entries by lsId; returns groups sorted by first date."""
+    groups: dict[int | None, list[dict]] = {}
+    for e in entries:
+        groups.setdefault(e.get("lsId"), []).append(e)
+    out = []
+    for lsid, g in groups.items():
+        g_sorted = sorted(g, key=lambda e: (e["date"], e["time"]))
+        subj = g_sorted[0].get("subject") or "?"
+        subj_long = g_sorted[0].get("subjectLong") or ""
+        teachers: list[str] = []
+        for e in g_sorted:
+            for t in e.get("teachers", []):
+                if t and t not in teachers:
+                    teachers.append(t)
+        shorts: list[str] = []
+        for e in g_sorted:
+            for t in e.get("teacherShorts", []):
+                if t and t not in shorts:
+                    shorts.append(t)
+        rooms: list[str] = []
+        for e in g_sorted:
+            for r in e.get("rooms", []):
+                if r and r not in rooms:
+                    rooms.append(r)
+        out.append({
+            "lsId": lsid,
+            "subject": subj,
+            "subjectLong": subj_long,
+            "class": g_sorted[0].get("class"),
+            "classId": g_sorted[0].get("classId"),
+            "periods": len(g_sorted),
+            "firstDate": g_sorted[0]["date"],
+            "lastDate": g_sorted[-1]["date"],
+            "openTopicIds": sorted({e["topicId"] for e in g_sorted
+                                    if e.get("topicId")}),
+            "teachers": teachers,
+            "teacherShorts": shorts,
+            "rooms": rooms,
+            "entries": g_sorted,
+        })
+    out.sort(key=lambda g: (g["firstDate"], g["subject"]))
+    return out
+
+
+def cmd_lessons(args: argparse.Namespace) -> int:
+    """List the user's lessons for one class, grouped by lesson (lsId)."""
+    c = _make_client(args)
+    sy = c.resolve_schoolyear_id(override=args.school_year_id)
+    start, end = args.start, args.end
+    if start is None or end is None:
+        syr = next((y for y in c.get_schoolyears() if int(y["id"]) == sy),
+                   None)
+        if syr is None:
+            print(f"schoolyear {sy} not found", file=sys.stderr)
+            return 2
+        dr = syr["dateRange"]
+        start = start or str(dr["start"])[:10]
+        end = end or str(dr["end"])[:10]
+    entries = _open_period_entries(c, sy, start, end)
+    cls_l = args.classname.lower()
+    entries = [e for e in entries
+               if (e.get("class") or "").lower() == cls_l]
+    if args.subject:
+        sl = args.subject.lower()
+        entries = [e for e in entries
+                   if (e.get("subject") or "").lower().startswith(sl)]
+    if not entries:
+        print(f"(no lessons for {args.classname}"
+              + (f"/{args.subject}" if args.subject else "")
+              + f" with open topics/absences in {start}..{end})")
+        return 0
+    groups = _group_lesson_entries(entries)
+
+    full_by_short: dict[str, str] = {}
+    if args.full_names:
+        shorts = sorted({t for g in groups for t in g["teacherShorts"]})
+        for short in shorts:
+            hits = c.search_timetable(short, school_year_id=sy)
+            match = next((h["resource"] for h in hits
+                          if h.get("type") == "TEACHER"
+                          and h["resource"].get("shortName") == short), None)
+            if match:
+                full_by_short[short] = (match.get("displayName")
+                                        or match.get("longName") or short)
+
+    if args.json:
+        print(json.dumps({
+            "class": args.classname,
+            "range": {"start": start, "end": end},
+            "lessons": [{k: v for k, v in g.items() if k != "entries"}
+                        for g in groups],
+            "entries": [{k: v for k, v in e.items()
+                         if not k.startswith("_")} for e in entries],
+        }, indent=2, ensure_ascii=False))
+        return 0
+    for g in groups:
+        teachers = [full_by_short.get(s, t)
+                    for t, s in zip(g["teachers"], g["teacherShorts"])] \
+            if args.full_names else g["teachers"]
+        print(f"lsId {g['lsId']}  {g['subject']} — {g['subjectLong']}")
+        print(f"  {g['class']}  periods={g['periods']}  "
+              f"{g['firstDate']} .. {g['lastDate']}  offen={len(g['entries'])}")
+        if teachers:
+            print(f"  Lehrer: {' + '.join(teachers)}")
+        if g["rooms"]:
+            print(f"  Räume:  {' + '.join(g['rooms'])}")
+    return 0
+
+
+def cmd_lehrstoff_list(args: argparse.Namespace) -> int:
+    c = _make_client(args)
+    sy = c.resolve_schoolyear_id(override=args.school_year_id)
+    entries = _open_period_entries(c, sy, args.start, args.end)
+    if not entries:
+        print("[]" if args.json else "(no open periods)")
+        return 0
     if args.json:
         clean = [{k: v for k, v in e.items() if not k.startswith("_")}
                  for e in entries]
@@ -735,35 +867,25 @@ def _resolve_lsid_from_class_subject(c: "object", sy: int,
     the single matching lsId or raises RuntimeError with candidates.
     """
     from datetime import date as _date, timedelta as _timedelta
-    start = _date.today() - _timedelta(days=7)
-    end = _date.today() + _timedelta(days=13)
-    data = c.get_open_periods(start.isoformat(), end.isoformat(),
-                              school_year_id=sy)
-    raw = data.get("periods", [])
+    start = (_date.today() - _timedelta(days=7)).isoformat()
+    end = (_date.today() + _timedelta(days=13)).isoformat()
+    entries = _open_period_entries(c, sy, start, end)
     cls_l = class_name.lower()
     subj_l = subject.lower()
-    matches: dict[int, list[dict]] = {}
-    for p in raw:
-        per = p.get("period", {})
-        cls = (per.get("classes", [{}])[0].get("el", {}) or {}).get("name", "")
-        subj = (per.get("subject", {}).get("el", {}) or {}).get("nameShort", "")
-        if cls.lower() != cls_l:
+    matches: dict[int, list[str]] = {}
+    for e in entries:
+        if (e["class"] or "").lower() != cls_l:
             continue
+        subj = e["subject"] or ""
         if not (subj.lower() == subj_l
                 or subj.lower().startswith(subj_l)
                 or subj_l.startswith(subj.lower())):
             continue
-        lsid = per.get("lsId")
-        if lsid is not None:
-            matches.setdefault(lsid, []).append(
-                {"date": (per.get("dtRange", {}).get("start") or "")[:10],
-                 "subject": subj})
+        if e["lsId"] is not None:
+            matches.setdefault(e["lsId"], []).append(e["date"])
     if not matches:
-        avail = sorted({((per.get("classes", [{}])[0].get("el", {}) or {})
-                         .get("name", ""),
-                        (per.get("subject", {}).get("el", {}) or {})
-                        .get("nameShort", ""))
-                       for p in raw})
+        avail = sorted({(e["class"] or "", e["subject"] or "")
+                        for e in entries})
         hints = ", ".join(f"{a}/{b}" for a, b in avail if a.lower() == cls_l)
         raise RuntimeError(
             f"no lesson found for {class_name}/{subject} in "
@@ -771,8 +893,8 @@ def _resolve_lsid_from_class_subject(c: "object", sy: int,
                                  if hints else ""))
     if len(matches) > 1:
         cands = "; ".join(
-            f"lsId={lsid} ({', '.join(m['date'] for m in ms)})"
-            for lsid, ms in sorted(matches.items()))
+            f"lsId={lsid} ({', '.join(sorted(set(ds)))})"
+            for lsid, ds in sorted(matches.items()))
         raise RuntimeError(
             f"ambiguous lesson for {class_name}/{subject}: {cands}")
     return next(iter(matches))
@@ -1106,6 +1228,21 @@ def main() -> int:
     le_list.add_argument("--end", type=_date_arg, required=True)
     le_list.add_argument("--json", action="store_true")
     le_list.set_defaults(func=cmd_lehrstoff_list)
+
+    ls = sub.add_parser(
+        "lessons", help="list the user's lessons for one class, "
+                        "grouped by lesson (lsId)")
+    ls.add_argument("classname", help="class name, e.g. 3BAIF")
+    ls.add_argument("--subject", default=None,
+                    help="filter by subject short name (prefix match)")
+    ls.add_argument("--start", type=_date_arg, default=None,
+                    help="default: current schoolyear start")
+    ls.add_argument("--end", type=_date_arg, default=None,
+                    help="default: current schoolyear end")
+    ls.add_argument("--full-names", action="store_true",
+                    help="resolve teacher shorts to 'Lastname, Firstname'")
+    ls.add_argument("--json", action="store_true")
+    ls.set_defaults(func=cmd_lessons)
 
     le_get = le_sub.add_parser("get")
     le_get.add_argument("--period", type=int, required=True)
