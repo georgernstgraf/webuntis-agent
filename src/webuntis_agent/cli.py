@@ -726,10 +726,82 @@ def cmd_kv(args: argparse.Namespace) -> int:
     return 0
 
 
+def _resolve_lsid_from_class_subject(c: "object", sy: int,
+                                     class_name: str, subject: str) -> int:
+    """Find the lsId of a (class, subject) lesson via open periods.
+
+    Scans a window around today (7 days back, 13 ahead). Case-
+    insensitive matching; subject falls back to a prefix match. Returns
+    the single matching lsId or raises RuntimeError with candidates.
+    """
+    from datetime import date as _date, timedelta as _timedelta
+    start = _date.today() - _timedelta(days=7)
+    end = _date.today() + _timedelta(days=13)
+    data = c.get_open_periods(start.isoformat(), end.isoformat(),
+                              school_year_id=sy)
+    raw = data.get("periods", [])
+    cls_l = class_name.lower()
+    subj_l = subject.lower()
+    matches: dict[int, list[dict]] = {}
+    for p in raw:
+        per = p.get("period", {})
+        cls = (per.get("classes", [{}])[0].get("el", {}) or {}).get("name", "")
+        subj = (per.get("subject", {}).get("el", {}) or {}).get("nameShort", "")
+        if cls.lower() != cls_l:
+            continue
+        if not (subj.lower() == subj_l
+                or subj.lower().startswith(subj_l)
+                or subj_l.startswith(subj.lower())):
+            continue
+        lsid = per.get("lsId")
+        if lsid is not None:
+            matches.setdefault(lsid, []).append(
+                {"date": (per.get("dtRange", {}).get("start") or "")[:10],
+                 "subject": subj})
+    if not matches:
+        avail = sorted({((per.get("classes", [{}])[0].get("el", {}) or {})
+                         .get("name", ""),
+                        (per.get("subject", {}).get("el", {}) or {})
+                        .get("nameShort", ""))
+                       for p in raw})
+        hints = ", ".join(f"{a}/{b}" for a, b in avail if a.lower() == cls_l)
+        raise RuntimeError(
+            f"no lesson found for {class_name}/{subject} in "
+            f"{start}..{end}" + (f"; available for {class_name}: {hints}"
+                                 if hints else ""))
+    if len(matches) > 1:
+        cands = "; ".join(
+            f"lsId={lsid} ({', '.join(m['date'] for m in ms)})"
+            for lsid, ms in sorted(matches.items()))
+        raise RuntimeError(
+            f"ambiguous lesson for {class_name}/{subject}: {cands}")
+    return next(iter(matches))
+
+
 def cmd_students_list(args: argparse.Namespace) -> int:
-    """Dump the attendance matrix of a lesson (per-student dates)."""
+    """Dump the attendance matrix of a lesson (per-student dates).
+
+    The lesson is given by --lsid, or resolved from positional
+    CLASS SUBJECT (e.g. `students list 2AHWII SWP1x`) via the open
+    periods of a window around today.
+    """
     c = _make_client(args)
-    matrix = c.get_student_lesson_period_matrix(args.lsid)["result"]
+    lsid = args.lsid
+    if lsid is None:
+        if not args.class_name or not args.subject:
+            print("either --lsid or CLASS SUBJECT are required",
+                  file=sys.stderr)
+            return 2
+        sy = c.resolve_schoolyear_id(override=args.school_year_id)
+        try:
+            lsid = _resolve_lsid_from_class_subject(
+                c, sy, args.class_name, args.subject)
+        except RuntimeError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(f"resolved {args.class_name}/{args.subject} -> lsId {lsid}",
+              file=sys.stderr)
+    matrix = c.get_student_lesson_period_matrix(lsid)["result"]
     dates = sorted({p["date"] for p in matrix["lessonPeriods"]})
     students = matrix["allStudents"]
     if args.class_id is not None:
@@ -738,7 +810,8 @@ def cmd_students_list(args: argparse.Namespace) -> int:
         students = [s for s in students if s["attendedPeriods"]]
     if args.json:
         print(json.dumps({
-            "lsId": args.lsid,
+            "lsId": lsid,
+            "mainStudentgroupId": matrix["mainStudentgroupId"],
             "lessonDates": dates,
             "students": [
                 {"id": s["id"], "name": s["name"], "klasse": s["klasse"],
@@ -747,8 +820,13 @@ def cmd_students_list(args: argparse.Namespace) -> int:
             ],
         }, indent=2, ensure_ascii=False))
         return 0
-    print(f"lsId {args.lsid}: {len(dates)} lesson dates, "
-          f"{len(students)} students listed")
+    if not args.all and not args.attending_only:
+        attending = [s for s in students if s["attendedPeriods"]]
+        print(f"(text view: attending only, {len(attending)}/{len(students)} "
+              f"shown; --all or --json for everything)")
+        students = attending
+    print(f"lsId {lsid} (mainStudentgroupId {matrix['mainStudentgroupId']}): "
+          f"{len(dates)} lesson dates, {len(students)} students listed")
     for s in students:
         n = len(s["attendedPeriods"])
         note = "alle" if n == len(dates) else str(n)
@@ -813,6 +891,7 @@ def cmd_students_add(args: argparse.Namespace) -> int:
 
     summary = {
         "student": target,
+        "mainStudentgroupId": result["mainStudentgroupId"],
         "lessonDates": lesson_dates,
         "payloadStudents": len(students_payload),
         "payload": payload if args.verbose else "(use --verbose to dump)",
@@ -896,6 +975,7 @@ def cmd_students_edit(args: argparse.Namespace) -> int:
     summary = {
         "added": [by_id[sid]["name"] for sid in add_ids],
         "removed": [by_id[sid]["name"] for sid in remove_ids],
+        "mainStudentgroupId": result["mainStudentgroupId"],
         "lessonDates": lesson_dates,
         "payloadStudents": len(keep),
         "payload": payload if args.verbose else "(use --verbose to dump)",
@@ -1122,10 +1202,19 @@ def main() -> int:
 
     stu_list = stu_sub.add_parser(
         "list", help="dump a lesson's attendance matrix")
-    stu_list.add_argument("--lsid", type=int, required=True)
+    stu_list.add_argument("--lsid", type=int, default=None,
+                          help="lesson id; optional if CLASS SUBJECT given")
+    stu_list.add_argument("class_name", nargs="?", default=None,
+                          help="class name, e.g. 2AHWII (with SUBJECT "
+                               "resolves the lsId automatically)")
+    stu_list.add_argument("subject", nargs="?", default=None,
+                          help="subject short name, e.g. SWP1x")
     stu_list.add_argument("--class-id", type=int, default=None,
                           help="only students of this class id")
     stu_list.add_argument("--attending-only", action="store_true")
+    stu_list.add_argument("--all", action="store_true",
+                          help="text view: show every student, not only "
+                               "attending ones (JSON always shows all)")
     stu_list.add_argument("--json", action="store_true")
     stu_list.set_defaults(func=cmd_students_list)
 
