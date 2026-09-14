@@ -37,12 +37,9 @@ against the live API.
       keine bogus Sessions im Cache mehr.
 
 ## Pending
-- [ ] Login aktuell blockiert: nach gezielten Wrong-Password-Probes
-      (Diagnose der 302-Semantik) weist WebUntis den Login temporär ab
-      (generic "Ungültiger Benutzername und/oder Passwort" auch für das
-      echte Passwort) — vermutlich Fehlversuch-Sperre oder Captcha.
-      Nächster Schritt: warten (typ. 10-30 min) bzw. im Browser prüfen,
-      dann `webuntis-agent login` erneut und Cache-Flow verifizieren.
+- None open. (Login-Sperre nach den Wrong-Password-Probes hat sich
+  gelöst; `webuntis-agent login` erfolgreich inkl. anonymousMode-
+  Verifikation, Cache-Flow live bestätigt.)
 
 ## Earlier (2026-08-22 cycle)
 - [x] School year 2025/26 fully closed: 418 periods Lehrstoff + Absenzen
@@ -55,9 +52,7 @@ against the live API.
 - (see top Pending item: temporary login block, retry later)
 
 ## Blockers
-- WebUntis login temporarily rejecting credentials (apparent
-  failed-attempt lockout triggered during diagnosis); existing browser
-  session should be unaffected.
+- None. (Temporäre Login-Sperre nach Diagnose-Probes hat sich gelöst.)
 
 ## Notes
 - Lesson ids 215940 (POS1) / 218839 (WMC_1) sind im Schuljahr 2026/27
