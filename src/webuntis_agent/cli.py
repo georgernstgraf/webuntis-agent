@@ -593,6 +593,132 @@ def cmd_lehrstoff_fill_fixed(args: argparse.Namespace) -> int:
     return 0 if ok == len(results) else 1
 
 
+def cmd_search(args: argparse.Namespace) -> int:
+    """Search classes/teachers/students by text (full names included)."""
+    c = _make_client(args)
+    sy = c.resolve_schoolyear_id(override=args.school_year_id)
+    results = c.search_timetable(args.query, school_year_id=sy)
+    if args.json:
+        print(json.dumps(results, indent=2, ensure_ascii=False))
+        return 0
+    if not results:
+        print("(no results)")
+        return 0
+    for r_ in results:
+        res = r_.get("resource", {})
+        print(
+            f"{r_.get('type', '?'):>8}  id={res.get('id'):>6}  "
+            f"{res.get('shortName', ''):12} "
+            f"{res.get('displayName') or res.get('longName', '')}"
+        )
+    return 0
+
+
+def _teacher_names_for_class(c: "object", class_id: int,
+                             teacher_ids: list[int],
+                             school_year_id: int | None) -> dict[int, str]:
+    """Resolve teacher ids -> display names via weekly timetable short
+    names + timetable search (getTeachers is 403 for teacher accounts)."""
+    from datetime import date as _date, timedelta as _timedelta
+    short_by_id: dict[int, str] = {}
+    probe = _date.today()
+    for _ in range(4):
+        try:
+            elements = c.get_weekly_timetable_elements(
+                class_id, probe.isoformat())
+        except Exception:
+            elements = []
+        for el in elements:
+            if el.get("type") == 2 and el.get("id") in teacher_ids:
+                short_by_id[el["id"]] = el.get("name", "")
+        if all(t in short_by_id for t in teacher_ids):
+            break
+        probe -= _timedelta(days=7)
+    out: dict[int, str] = {}
+    for tid in teacher_ids:
+        short = short_by_id.get(tid, "")
+        if not short:
+            out[tid] = f"(id {tid}, Kürzel nicht im Stundenplan gefunden)"
+            continue
+        hits = c.search_timetable(short, school_year_id=school_year_id)
+        match = next(
+            (h["resource"] for h in hits
+             if h.get("type") == "TEACHER" and h["resource"].get("id") == tid),
+            None)
+        out[tid] = (match.get("displayName") or match.get("longName", short)
+                    if match else short)
+    return out
+
+
+def cmd_kv(args: argparse.Namespace) -> int:
+    """Show the Klassenvorstand (class teacher) of a class."""
+    c = _make_client(args)
+    sy = c.resolve_schoolyear_id(override=args.school_year_id)
+    res = c.get_klassen(schoolyear_id=sy)
+    klassen = res.get("result", []) if isinstance(res, dict) else res
+    needle: int | str = args.klasse
+    if isinstance(needle, str) and needle.isdigit():
+        needle = int(needle)
+    hit = None
+    for k in klassen:
+        if isinstance(needle, int) and k.get("id") == needle:
+            hit = k
+            break
+        if (isinstance(needle, str)
+                and k.get("name", "").lower() == needle.lower()):
+            hit = k
+            break
+    if hit is None:
+        print(f"class '{args.klasse}' not found", file=sys.stderr)
+        return 2
+    teacher_ids = [v for key in ("teacher1", "teacher2", "teacher3")
+                   if (v := hit.get(key))]
+    info = {
+        "classId": hit.get("id"),
+        "name": hit.get("name"),
+        "longName": hit.get("longName"),
+        "teachers": _teacher_names_for_class(c, hit["id"], teacher_ids, sy),
+    }
+    if args.json:
+        print(json.dumps(info, indent=2, ensure_ascii=False))
+        return 0
+    print(f"{info['name']} ({info['longName']}):")
+    for tid, name in info["teachers"].items():
+        print(f"  KV: {name} (teacher id {tid})")
+    return 0
+
+
+def cmd_students_list(args: argparse.Namespace) -> int:
+    """Dump the attendance matrix of a lesson (per-student dates)."""
+    c = _make_client(args)
+    matrix = c.get_student_lesson_period_matrix(args.lsid)["result"]
+    dates = sorted({p["date"] for p in matrix["lessonPeriods"]})
+    students = matrix["allStudents"]
+    if args.class_id is not None:
+        students = [s for s in students if s["klasse"] == args.class_id]
+    if args.attending_only:
+        students = [s for s in students if s["attendedPeriods"]]
+    if args.json:
+        print(json.dumps({
+            "lsId": args.lsid,
+            "lessonDates": dates,
+            "students": [
+                {"id": s["id"], "name": s["name"], "klasse": s["klasse"],
+                 "attendedPeriods": s["attendedPeriods"]}
+                for s in students
+            ],
+        }, indent=2, ensure_ascii=False))
+        return 0
+    print(f"lsId {args.lsid}: {len(dates)} lesson dates, "
+          f"{len(students)} students listed")
+    for s in students:
+        n = len(s["attendedPeriods"])
+        note = "alle" if n == len(dates) else str(n)
+        print(f"  {s['id']:>6}  {s['name']:32} klasse={s['klasse']:>5}  "
+              f"Termine: {note}")
+    return 0
+
+
 def cmd_students_add(args: argparse.Namespace) -> int:
     """Add a student to a lesson's attendance (Schüler-Aufnahme).
 
@@ -832,6 +958,18 @@ def main() -> int:
     rec = sub.add_parser("record", help="run the CDP recorder")
     sub.add_parser("cookies", help="dump harvested cookies")
 
+    se = sub.add_parser(
+        "search", help="search classes/teachers/students (full names)")
+    se.add_argument("query")
+    se.add_argument("--json", action="store_true")
+    se.set_defaults(func=cmd_search)
+
+    kv = sub.add_parser(
+        "kv", help="show the Klassenvorstand of a class (id or name)")
+    kv.add_argument("klasse", help="class id (e.g. 4134) or name (e.g. 5AAIF)")
+    kv.add_argument("--json", action="store_true")
+    kv.set_defaults(func=cmd_kv)
+
     le = sub.add_parser("lehrstoff", help="Lehrstoff (lesson topic)")
     le_sub = le.add_subparsers(dest="sub", required=True)
     le_list = le_sub.add_parser("list")
@@ -932,6 +1070,15 @@ def main() -> int:
     # -- students --
     stu = sub.add_parser("students", help="Schülerverwaltung (lesson attendance)")
     stu_sub = stu.add_subparsers(dest="sub", required=True)
+
+    stu_list = stu_sub.add_parser(
+        "list", help="dump a lesson's attendance matrix")
+    stu_list.add_argument("--lsid", type=int, required=True)
+    stu_list.add_argument("--class-id", type=int, default=None,
+                          help="only students of this class id")
+    stu_list.add_argument("--attending-only", action="store_true")
+    stu_list.add_argument("--json", action="store_true")
+    stu_list.set_defaults(func=cmd_students_list)
 
     stu_add = stu_sub.add_parser("add",
                                  help="add a student to a lesson's attendance")

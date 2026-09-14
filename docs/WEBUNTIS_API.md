@@ -276,6 +276,36 @@ buttons — add/remove student logic is in `StudentLessonPeriodMatrixPage`.
   Example SY24 week 1 for 3BAIF: POS1 lsId=215940 (GRG),
   WMC_1 lsId=218839 (GRG+LEA).
 
+## Element Search / Klassenvorstand (teacher-name resolution)
+
+`getTeachers()` (JSON-RPC) → error -8509 "no right for getTeachers()";
+REST `/v1/teachers`, `/v1/teachers/{id}` → 403 Access Denied;
+`messages/recipients/static/teachers` and `/search` → 200 but
+ANONYMIZED (`personId:-1, displayName:""`, school-level privacy
+setting). The weekly timetable elements carry SHORT names only.
+
+Working path (CLI: `search`, `kv`):
+
+- `GET /WebUntis/api/rest/view/v1/timetable/search?q={text}&schoolyear={id}`
+  (REST headers incl. Bearer JWT; schoolyear id via `getSchoolyears`,
+  e.g. 24 for 2026/27). Returns
+  `{numPartialMatches, results:[{type: CLASS|TEACHER|STUDENT,
+  resource:{id, shortName, longName, displayName}}]}` — displayName of
+  a teacher is `"Lastname, Firstname (SHORT)"`.
+- Klassenvorstand: JSON-RPC `getKlassen` entries carry `teacher1`
+  (optionally teacher2/3) = teacher id of the class teacher.
+  Resolve id → short name via the class's weekly timetable elements
+  (type 2, probe up to 4 past weeks in case of lesson-free weeks),
+  then short name → full name via timetable/search.
+  Example: Melissa Tuncer (id 13442) is in klasse 4134 = 5AAIF,
+  teacher1=147 = "Schiefer, Birgit (SB)".
+- `allStudents.klasse` in the student matrix: `-1` = no class
+  association in that context; otherwise the real class id (e.g.
+  4137 = 5BAIF).
+
+CLI commands: `search <text>`, `kv <class-id|class-name>`,
+`students list --lsid X [--class-id Y] [--attending-only]`.
+
 ## Student Lesson Period Matrix (Schüler-Aufnahme / Teilnehmer)
 
 The "add student to lesson" feature. Legacy jsonrpc_web service:

@@ -19,6 +19,13 @@ against the live API.
 - [x] Rana Aaron (21616) und Steindl Jonathan (21592) aus POS1 und WMC_1
       entfernt (laut User gehören beide in keines der beiden Fächer;
       je 1 Write, verifiziert per Matrix-Re-Read)
+- [x] Name-Auflösung für Lehrer geklärt: getTeachers/REST-/teachers 403,
+      Message-Empfänger anonymisiert — einziger Weg ist
+      GET /v1/timetable/search?q=..&schoolyear=.. (Kürzel → Vollname);
+      getKlassen().teacher1 liefert die KV-Teacher-ID
+- [x] Neue CLI-Commands: `search <text>` (Timetable-Suche), `kv <klasse>`
+      (Klassenvorstand, id oder Name), `students list --lsid`
+      (Attendance-Matrix dumpen)
 
 ## Earlier (2026-08-22 cycle)
 - [x] School year 2025/26 fully closed: 418 periods Lehrstoff + Absenzen
@@ -37,6 +44,8 @@ against the live API.
 - Lesson ids 215940 (POS1) / 218839 (WMC_1) sind im Schuljahr 2026/27
   stabil gültig; Klassenregister-Klasse der Lektion ist 4107 (21 Schüler,
   15 attending), externe Aufnahmen haben klasse 4137 (5BAIF).
+- Beispiel: KV von 5AAIF (klasse 4134) ist Schiefer, Birgit (SB,
+  teacher id 147) — `kv 5AAIF`.
 
 ## Next Session Suggestion
 - Nothing queued; new feature requests as they come up.

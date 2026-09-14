@@ -378,6 +378,46 @@ class Client:
     def get_current_schoolyear(self) -> dict[str, Any]:
         return self.rpc("getCurrentSchoolyear")
 
+    # ----- Timetable search (element lookup with full names) -----------
+
+    def search_timetable(self, query: str,
+                         school_year_id: int | None = None
+                         ) -> list[dict[str, Any]]:
+        """Search classes/teachers/students with full display names.
+
+        The only working name-resolution path for teacher accounts:
+        getTeachers() and /v1/teachers are 403, but this search endpoint
+        returns shortName + longName + displayName for every hit.
+        """
+        if school_year_id is None:
+            school_year_id = self.resolve_schoolyear_id()
+        r = _request_with_retry(
+            self.http, "GET",
+            f"{self.host}/WebUntis/api/rest/view/v1/timetable/search",
+            params={"q": query, "schoolyear": school_year_id},
+            headers=self._rest_headers(),
+        )
+        r.raise_for_status()
+        return r.json().get("results", [])
+
+    def get_weekly_timetable_elements(self, class_id: int,
+                                      date: str) -> list[dict[str, Any]]:
+        """Elements (id/name lookup) of a class's weekly timetable.
+
+        Public endpoint; elements only carry SHORT names (e.g. 'SB').
+        Resolve ids to full names via search_timetable().
+        """
+        r = _request_with_retry(
+            self.http, "GET",
+            f"{self.host}/WebUntis/api/public/timetable/weekly/data",
+            params={"elementType": 1, "elementId": class_id,
+                    "date": date, "formatId": 1},
+            headers={"Cookie": self.session.cookie_header},
+        )
+        r.raise_for_status()
+        data = r.json()
+        return data["data"]["result"]["data"]["elements"]
+
     # ----- Absences (Absenzenkontrolle) ---------------------------------
 
     def get_csrf_token(self, period_id: int) -> str:
