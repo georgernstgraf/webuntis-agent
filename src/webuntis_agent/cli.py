@@ -30,14 +30,52 @@ def _load_env() -> None:
         pass
 
 
+def _session_path() -> str:
+    """Persisted-login cache file, next to .env in the repo root."""
+    from pathlib import Path
+    return str(Path(__file__).resolve().parents[2] / ".webuntis_session.json")
+
+
 def _make_client(args: argparse.Namespace):
     _load_env()
     from webuntis_agent.client import Client
-    return Client(
+    c = Client(
         host=os.environ.get("WEBUNTIS_HOST",
                             "https://spengergasse.webuntis.com"),
         school=os.environ.get("WEBUNTIS_SCHOOL", "spengergasse"),
+        session_path=_session_path(),
     )
+    c.load_cached_session()
+    return c
+
+
+def cmd_login(args: argparse.Namespace) -> int:
+    """Log in once and persist the session for all following CLI calls."""
+    _load_env()
+    from webuntis_agent.client import Client
+    c = Client(
+        host=os.environ.get("WEBUNTIS_HOST",
+                            "https://spengergasse.webuntis.com"),
+        school=os.environ.get("WEBUNTIS_SCHOOL", "spengergasse"),
+        session_path=_session_path(),
+    )
+    c._session = None
+    c.login()
+    sid = c.session.jsessionid
+    masked = (sid[:6] + "...") if len(sid) > 6 else "..."
+    print(f"logged in as {c.user or '?'} @ {c.host}")
+    print(f"session cached: {_session_path()} (JSESSIONID {masked})")
+    c.close()
+    return 0
+
+
+def cmd_logout(args: argparse.Namespace) -> int:
+    """Invalidate the server session and delete the cached session file."""
+    c = _make_client(args)
+    c.logout()
+    print("logged out; session cache removed")
+    c.close()
+    return 0
 
 
 def _fixed_text(subject: str) -> str | None:
@@ -957,6 +995,17 @@ def main() -> int:
 
     rec = sub.add_parser("record", help="run the CDP recorder")
     sub.add_parser("cookies", help="dump harvested cookies")
+
+    sub.add_parser(
+        "login",
+        help="log in once and cache the session for all following calls")
+    login_parser = sub.choices["login"]
+    login_parser.set_defaults(func=cmd_login)
+
+    sub.add_parser(
+        "logout",
+        help="invalidate the session and delete the session cache")
+    sub.choices["logout"].set_defaults(func=cmd_logout)
 
     se = sub.add_parser(
         "search", help="search classes/teachers/students (full names)")

@@ -24,24 +24,42 @@ DEFAULT_SCHOOL = "spengergasse"
 
 def _request_with_retry(
     http: httpx.Client, method: str, url: str, *,
+    client: "Client | None" = None,
     retries: int = 3, backoff: float = 2.0,
     retry_on: tuple = (httpx.ConnectError, httpx.ReadError),
     **kwargs: Any,
 ) -> httpx.Response:
     """Send a request with exponential backoff on transient connection errors.
 
-    Used by the client to survive temporary IP rate-limiting / TCP resets.
+    `headers` may be a zero-arg callable returning the dict — it is then
+    evaluated per attempt, so a re-login retry picks up the NEW session
+    cookie / JWT. If `client` is set and the response signals a lost
+    session (401 or redirect to the login form), the client re-logs in
+    once and the request is retried with fresh headers.
     """
     last_exc: Exception | None = None
+
+    def _send() -> httpx.Response:
+        kw = dict(kwargs)
+        h = kw.get("headers")
+        if callable(h):
+            kw["headers"] = h()
+        return http.request(method, url, **kw)
+
     for attempt in range(retries + 1):
         try:
-            return http.request(method, url, **kwargs)
+            r = _send()
         except retry_on as e:
             last_exc = e
             if attempt == retries:
                 raise
             sleep_s = backoff * (2 ** attempt)
             time.sleep(sleep_s)
+            continue
+        if client is not None and client._auth_lost(r):
+            client.relogin()
+            return _send()
+        return r
     assert last_exc is not None
     raise last_exc
 
@@ -142,7 +160,8 @@ class Client:
 
     def __init__(self, host: str = DEFAULT_HOST, school: str = DEFAULT_SCHOOL,
                  user: str | None = None, password: str | None = None,
-                 session: Session | None = None, timeout: float = 30.0):
+                 session: Session | None = None, timeout: float = 30.0,
+                 session_path: str | None = None):
         self.host = host
         self.school = school
         self.user = user or os.environ.get("WEBUNTIS_USER", "")
@@ -152,6 +171,7 @@ class Client:
         self._jwt: str | None = None
         self._jwt_payload: JwtPayload | None = None
         self._schoolyears: list[dict[str, Any]] | None = None
+        self.session_path = session_path
 
     def close(self) -> None:
         """Close the underlying HTTP client."""
@@ -188,10 +208,26 @@ class Client:
                 "token": "",
             },
         )
-        # 302 = success, 200 = failed (back to login)
+        # 302 is NOT a success signal: WebUntis redirects to /WebUntis/
+        # for BOTH successful and failed logins (a failed login still
+        # sets a fresh, anonymous JSESSIONID). Verify via the SPA
+        # bootstrap page, which carries "anonymousMode":true|false.
         if r.status_code != 302:
             raise RuntimeError(
                 f"login failed (status {r.status_code})"
+            )
+        v = self.http.get(
+            f"{self.host}/WebUntis/",
+            headers={"Cookie": self._session_cookie_from_response()},
+            follow_redirects=True,
+        )
+        m = re.search(r'"anonymousMode":(true|false)', v.text)
+        if m and m.group(1) == "true":
+            err = re.search(r'"loginError":"([^"]*)"', v.text)
+            detail = err.group(1) if err else "session not authenticated"
+            raise RuntimeError(
+                f"login rejected: {detail} (wrong credentials, or a "
+                f"temporary login lockout/captcha after failed attempts)"
             )
         jsessionid = ""
         schoolname = ""
@@ -212,6 +248,95 @@ class Client:
             ),
             school=self.school, host=self.host,
         )
+        self.save_session()
+
+    def _session_cookie_from_response(self) -> str:
+        parts = []
+        for c in self.http.cookies.jar:
+            if c.name in ("JSESSIONID", "schoolname", "Tenant-Id"):
+                parts.append(f"{c.name}={c.value}")
+        return "; ".join(parts)
+
+    # ----- session cache (persisted login) ------------------------------
+
+    def save_session(self) -> None:
+        """Atomically persist the current session (chmod 600)."""
+        if not self.session_path or self._session is None:
+            return
+        data = {
+            "jsessionid": self._session.jsessionid,
+            "schoolname": self._session.schoolname_cookie,
+            "school": self._session.school,
+            "host": self._session.host,
+            "savedAt": datetime.now().isoformat(timespec="seconds"),
+        }
+        tmp = self.session_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=1)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, self.session_path)
+
+    def load_cached_session(self) -> bool:
+        """Adopt a persisted session if it matches host/school.
+
+        Corrupt or foreign files are ignored (fresh login happens lazily
+        on first request). Returns True when a cached session is loaded.
+        """
+        if not self.session_path or not os.path.exists(self.session_path):
+            return False
+        try:
+            with open(self.session_path, encoding="utf-8") as f:
+                data = json.load(f)
+            s = Session(
+                jsessionid=str(data["jsessionid"]),
+                schoolname_cookie=str(data["schoolname"]),
+                school=str(data.get("school", self.school)),
+                host=str(data.get("host", self.host)),
+            )
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+        if s.school != self.school or s.host != self.host:
+            return False
+        self._session = s
+        return True
+
+    @staticmethod
+    def _auth_lost(r: httpx.Response) -> bool:
+        """True when the response indicates the server-side session died.
+
+        A dead session does NOT answer 401 on every endpoint: the API
+        redirects to /WebUntis/index.do instead.
+        """
+        if r.status_code == 401:
+            return True
+        loc = r.headers.get("location", "")
+        if r.is_redirect and ("index.do" in loc or "login" in loc
+                              or "j_spring_security_check" in loc):
+            return True
+        return False
+
+    def relogin(self) -> None:
+        """Force a fresh login (cache file is refreshed by login())."""
+        self._session = None
+        self._jwt = None
+        self._jwt_payload = None
+        self.login()
+
+    def logout(self) -> None:
+        """Best-effort server logout, then drop memory + cached session."""
+        if self._session is not None:
+            try:
+                self.http.get(
+                    f"{self.host}/WebUntis/logout.do",
+                    headers={"Cookie": self._session.cookie_header},
+                )
+            except Exception:
+                pass
+        self._session = None
+        self._jwt = None
+        self._jwt_payload = None
+        if self.session_path and os.path.exists(self.session_path):
+            os.remove(self.session_path)
 
     def get_jwt(self) -> str:
         if self._jwt and self._jwt_payload and time.time() < self._jwt_payload.exp - 60:
@@ -219,7 +344,8 @@ class Client:
         r = _request_with_retry(
             self.http, "GET",
             f"{self.host}/WebUntis/api/token/new",
-            headers={"Cookie": self.session.cookie_header},
+            headers=lambda: {"Cookie": self.session.cookie_header},
+            client=self,
         )
         r.raise_for_status()
         self._jwt = r.text.strip()
@@ -248,7 +374,8 @@ class Client:
             r = _request_with_retry(
                 self.http, "GET",
                 f"{self.host}/WebUntis/api/rest/view/v1/schoolyears",
-                headers=self._rest_headers(),
+                headers=lambda: self._rest_headers(),
+                client=self,
             )
             r.raise_for_status()
             self._schoolyears = r.json()
@@ -299,10 +426,11 @@ class Client:
                 "filter": filter_,
                 "dateRange": {"start": start, "end": end},
             },
-            headers=self._rest_headers(
+            headers=lambda: self._rest_headers(
                 {"Content-Type": "application/json"},
                 school_year_id=school_year_id,
             ),
+            client=self,
         )
         r.raise_for_status()
         return r.json()
@@ -314,7 +442,9 @@ class Client:
             self.http, "GET",
             f"{self.host}/WebUntis/api/rest/view/v1/classreg/lesson-topics/period/{period_id}",
             params={"nearbyCount": nearby, "exceptThis": "false"},
-            headers=self._rest_headers(school_year_id=school_year_id),
+            headers=lambda: self._rest_headers(
+                school_year_id=school_year_id),
+            client=self,
         )
         r.raise_for_status()
         return r.json()
@@ -335,10 +465,11 @@ class Client:
                     "attachments": attachments or [],
                 },
             },
-            headers=self._rest_headers(
+            headers=lambda: self._rest_headers(
                 {"Content-Type": "application/json"},
                 school_year_id=school_year_id,
             ),
+            client=self,
         )
         r.raise_for_status()
         return r.json()
@@ -355,10 +486,11 @@ class Client:
                 "id": id_, "method": method,
                 "params": params or {}, "jsonrpc": "2.0",
             },
-            headers={
+            headers=lambda: {
                 "Content-Type": "application/json",
                 "Cookie": self.session.cookie_header,
             },
+            client=self,
         )
         r.raise_for_status()
         return r.json()
@@ -395,7 +527,8 @@ class Client:
             self.http, "GET",
             f"{self.host}/WebUntis/api/rest/view/v1/timetable/search",
             params={"q": query, "schoolyear": school_year_id},
-            headers=self._rest_headers(),
+            headers=lambda: self._rest_headers(),
+            client=self,
         )
         r.raise_for_status()
         return r.json().get("results", [])
@@ -412,7 +545,8 @@ class Client:
             f"{self.host}/WebUntis/api/public/timetable/weekly/data",
             params={"elementType": 1, "elementId": class_id,
                     "date": date, "formatId": 1},
-            headers={"Cookie": self.session.cookie_header},
+            headers=lambda: {"Cookie": self.session.cookie_header},
+            client=self,
         )
         r.raise_for_status()
         data = r.json()
@@ -431,10 +565,11 @@ class Client:
                 "isBlockSelected": "false",
                 "request.preventCache": ts,
             },
-            headers={
+            headers=lambda: {
                 "Cookie": self.session.cookie_header,
                 "X-Requested-With": "XMLHttpRequest",
             },
+            client=self,
         )
         r.raise_for_status()
         m = re.search(r'name="_csrf"\s+value="([^"]+)"', r.text)
@@ -465,12 +600,13 @@ class Client:
                 "reload": "0",
                 "_csrf": csrf,
             },
-            headers={
+            headers=lambda: {
                 "Cookie": self.session.cookie_header,
                 "X-CSRF-TOKEN": csrf,
                 "X-Requested-With": "XMLHttpRequest",
                 "Content-Type": "application/x-www-form-urlencoded",
             },
+            client=self,
         )
         r.raise_for_status()
         return r.json()
@@ -485,7 +621,8 @@ class Client:
             self.http, "GET",
             f"{self.host}/WebUntis/embedded.do",
             params={"showSidebar": "true"},
-            headers={"Cookie": self.session.cookie_header},
+            headers=lambda: {"Cookie": self.session.cookie_header},
+            client=self,
         )
         r.raise_for_status()
         m = re.search(r'"csrfToken":"([^"]+)"', r.text)
@@ -493,14 +630,16 @@ class Client:
             raise RuntimeError("could not extract csrfToken from embedded.do")
         csrf = m.group(1)
 
-        common_headers = {
-            "Cookie": self.session.cookie_header,
-            "X-CSRF-TOKEN": csrf,
-            "Content-Type": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-            "Referer": f"{self.host}/WebUntis/embedded.do",
-            "Origin": self.host,
-        }
+        def _json_headers() -> dict:
+            return {
+                "Cookie": self.session.cookie_header,
+                "X-CSRF-TOKEN": csrf,
+                "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+                "Referer": f"{self.host}/WebUntis/embedded.do",
+                "Origin": self.host,
+            }
+
         # setSchoolyear is required before other jsonrpc_web calls
         sy = self.resolve_schoolyear_id()
         r0 = _request_with_retry(
@@ -508,7 +647,8 @@ class Client:
             f"{self.host}/WebUntis/jsonrpc_web/jsonCalendarService",
             json={"id": id_, "method": "setSchoolyear",
                   "params": [sy], "jsonrpc": "2.0"},
-            headers=common_headers,
+            headers=_json_headers,
+            client=self,
         )
         r0.raise_for_status()
 
@@ -517,7 +657,8 @@ class Client:
             f"{self.host}/WebUntis/jsonrpc_web/{service}",
             json={"id": id_, "method": method,
                   "params": params, "jsonrpc": "2.0"},
-            headers=common_headers,
+            headers=_json_headers,
+            client=self,
         )
         r.raise_for_status()
         return r.json()

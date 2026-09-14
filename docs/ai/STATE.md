@@ -26,6 +26,23 @@ against the live API.
 - [x] Neue CLI-Commands: `search <text>` (Timetable-Suche), `kv <klasse>`
       (Klassenvorstand, id oder Name), `students list --lsid`
       (Attendance-Matrix dumpen)
+- [x] Session-Cache: `webuntis-agent login` persistiert die Session
+      (`.webuntis_session.json`, gitignored, chmod 600); alle Commands
+      nutzen den Cache, `_request_with_retry` logt bei Session-Verlust
+      (401 ODER 302→index.do) transparent 1× neu. `logout` räumt auf.
+- [x] Login-Verifikation repariert: 302 der j_spring_security_check ist
+      KEIN Erfolgssignal (falsche Passwörter liefern ebenfalls 302 +
+      neue anonyme JSESSIONID!). Verifikation über die SPA-Bootstrap-
+      Seite: `anonymousMode:true` + `loginError` → klarer RuntimeError,
+      keine bogus Sessions im Cache mehr.
+
+## Pending
+- [ ] Login aktuell blockiert: nach gezielten Wrong-Password-Probes
+      (Diagnose der 302-Semantik) weist WebUntis den Login temporär ab
+      (generic "Ungültiger Benutzername und/oder Passwort" auch für das
+      echte Passwort) — vermutlich Fehlversuch-Sperre oder Captcha.
+      Nächster Schritt: warten (typ. 10-30 min) bzw. im Browser prüfen,
+      dann `webuntis-agent login` erneut und Cache-Flow verifizieren.
 
 ## Earlier (2026-08-22 cycle)
 - [x] School year 2025/26 fully closed: 418 periods Lehrstoff + Absenzen
@@ -35,10 +52,12 @@ against the live API.
 - [x] students add CLI (dry-run default)
 
 ## Pending
-- None open.
+- (see top Pending item: temporary login block, retry later)
 
 ## Blockers
-- None.
+- WebUntis login temporarily rejecting credentials (apparent
+  failed-attempt lockout triggered during diagnosis); existing browser
+  session should be unaffected.
 
 ## Notes
 - Lesson ids 215940 (POS1) / 218839 (WMC_1) sind im Schuljahr 2026/27
