@@ -306,6 +306,21 @@ Working path (CLI: `search`, `kv`):
 CLI commands: `search <text>`, `kv <class-id|class-name>`,
 `students list --lsid X [--class-id Y] [--attending-only]`.
 
+## Lessons listing (`lessons <class>`)
+
+- Source: `classreg/open-periods` (teacher-scoped), mapped via the
+  shared `_open_period_entries` helper: per period id, topicId, class,
+  subject (short+full), date/time, lsId, teachers (`el.name`, e.g.
+  "Graf (GRG)"), rooms (`el.name` + `orgEl` when replaced, e.g.
+  "B3.07 (org A1.06)").
+- Output groups by lsId: subject short + full, period count, first/last
+  date, open count, teachers, rooms. `--full-names` resolves teacher
+  shorts to "Lastname, Firstname (SHORT)" via timetable/search.
+- LIMITATION: open-periods has no "all lessons" filter — meta endpoint
+  allows only `TOPIC_OR_ABSENCE_OPEN` (default), `ABSENCE_OPEN`,
+  `TOPIC_OPEN`. Lessons whose topics are all set AND absences checked
+  do not appear. No `--all` possible with this source.
+
 ## Student Lesson Period Matrix (Schüler-Aufnahme / Teilnehmer)
 
 The "add student to lesson" feature. Legacy jsonrpc_web service:
