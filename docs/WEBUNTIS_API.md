@@ -293,12 +293,12 @@ Working path (CLI: `search`, `kv`):
   resource:{id, shortName, longName, displayName}}]}` — displayName of
   a teacher is `"Lastname, Firstname (SHORT)"`.
 - Search semantics (verified 2026-09-16): the server does NOT match
-  multi-word phrases across first+last name (`"Clemens Unger"` -> [],
-  while `"Unger"` / `"Clemens"` hit). Student displayNames are
-  anonymized (last name only, e.g. `"Unger"`); the first name survives
-  only in `shortName` (`UngerCle` = Unger + Clemens[:3]) and in
+  multi-word phrases across first+last name (`"Erika Muster"` -> [],
+  while `"Muster"` / `"Erika"` hit). Student displayNames are
+  anonymized (last name only, e.g. `"Muster"`); the first name survives
+  only in `shortName` (`MusterEri` = Muster + Erika[:3]) and in
   `students/overview` (`firstName`/`lastName`/`classInfo`). The search
-  is schoolyear-sensitive: former students (e.g. id 12097 in SJ 21)
+  is schoolyear-sensitive: former students (e.g. id 12345 in SJ 21)
   vanish from current-year results.
 - CLI: `search <text>` (exact, current year default; `--fallback` for
   the tokenizing merge via `search_timetable_tokens()`, `--all-years`
@@ -311,8 +311,9 @@ Working path (CLI: `search`, `kv`):
   Resolve id → short name via the class's weekly timetable elements
   (type 2, probe up to 4 past weeks in case of lesson-free weeks),
   then short name → full name via timetable/search.
-  Example: Melissa Tuncer (id 13442) is in klasse 4134 = 5AAIF,
-  teacher1=147 = "Schiefer, Birgit (SB)".
+  Example (anonymized): klasse 4134 = 5AAIF, teacher1=<teacherId>
+  resolves via timetable/search to "<Nachname, Vorname (Kürzel)>".
+  (Konkrete Personenbeispiele nur lokal, siehe docs/ai/LOCAL.md.)
 - `allStudents.klasse` in the student matrix: `-1` = no class
   association in that context; otherwise the real class id (e.g.
   4137 = 5BAIF).
@@ -373,8 +374,9 @@ The "add student to lesson" feature. Legacy jsonrpc_web service:
 
 ### Key ids (schoolyear 24 / 2026-27)
 
-- Student "Badawi Mhd Nour": id=19405, klasse=4137 (5BAIF), attendedPeriods=[]
-  (also "Al Badawi Mahmoud" id=19261, same class — likely sibling)
+- Student record shape: id, klasse, attendedPeriods[] — concrete example
+  removed for privacy (live student ids/names only in local files, never
+  committed)
 - 3BAIF lesson POS1: lsId=215940, periodIds 5936072/5936075, mainStudentgroupId 166074
 - 3BAIF lesson WMC_1: lsId=218839 (GRG+LEA)
 - 3BAIF classId=4107 (17 students), 5BAIF classId=4137

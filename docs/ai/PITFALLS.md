@@ -42,18 +42,19 @@ Read this file carefully before making changes in affected areas.
 
 ## Class Register / Students
 
-- **Timetable search matches no multi-word phrases**: `q="Clemens Unger"`
-  returns [], while the single tokens hit (teacher UK/MC, student
-  `UngerCle`). Always tokenize (see `search_timetable_tokens()`,
+- **Timetable search matches no multi-word phrases**: `q="<Vorname Nachname>"`
+  returns [], while the single tokens hit (teacher Kürzel, student
+  `<Nachname><Vorname[:3]>`). Always tokenize (see `search_timetable_tokens()`,
   CLI `search --fallback`, `students find`) instead of trusting the
   exact phrase.
 - **Student displayNames are anonymized** (last name only); the first
-  name survives only in `shortName` (`<lastname><firstname[:3]>`, e.g.
-  `UngerCle`) and in `students/overview` (`firstName`/`lastName`).
+  name survives only in `shortName` (`<lastname><firstname[:3]>`) and in
+  `students/overview` (`firstName`/`lastName`).
   The shortname pattern is a heuristic — always flag it
   (`searchNote: shortname-hint`), never silently.
 - **Former students vanish from current-year search**: timetable/search
-  is schoolyear-sensitive (e.g. id 12097 found in SJ 21, gone in 24),
+  is schoolyear-sensitive (a student id may exist in an older SJ and be
+  gone in the current one),
   while `students/overview` always returns the CURRENT roster. Year
   fallback must therefore use timetable/search per year (max ~3 older
   years), and every non-current hit must be flagged NICHT AKTUELL
@@ -74,3 +75,14 @@ Read this file carefully before making changes in affected areas.
   (e.g. `getEmails` used as TitlePane href).
 - **Schoolyear ids change every year** (21 = 2025/26, 24 = 2026/27 — gap
   exists). Always resolve dynamically via schoolyears date-range match.
+
+## Privacy
+
+- **Tracked knowledge files are public**: HANDOFF.md/STATE.md/PITFALLS.md
+  are committed to a public repo and history is NEVER rewritten — a
+  student name or student id written here is permanently exposed. Write
+  person data ONLY to gitignored `docs/ai/LOCAL.md`, and ONLY on explicit
+  user request. Tracked entries reference it via `[Details: LOCAL.md]`.
+- **Allowed in tracked files**: counts, lesson ids (lsId), class ids,
+  period ids, subject names. NOT allowed: person names, student ids,
+  teacher names/ids, person-linked details.

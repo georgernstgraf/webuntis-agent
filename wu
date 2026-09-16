@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Tiny shortcut for the webuntis-agent CLI (no venv / PYTHONPATH needed).
 #
-# Usage: ./wu search "Clemens Unger"
-#        ./wu students find "Clemens Unger"
+# Usage: ./wu search "Erika Muster"
+#        ./wu students find "Erika Muster"
 #        ./wu --help
 #
 # Override the interpreter if needed: PYTHON_BIN=/path/to/python ./wu ...

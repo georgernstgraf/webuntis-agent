@@ -60,6 +60,16 @@ Output goes to `recordings/{timestamp}_network.jsonl` and
 Do NOT run `git` commands unless the user asks you to commit. The
 `recordings/` directory is gitignored because it contains session cookies.
 
+## Privacy
+
+This repo is public. NEVER write person data (student/teacher names,
+student IDs, person-linked details) into any tracked file — including
+`docs/ai/HANDOFF.md` and `docs/ai/STATE.md`. On explicit user request
+only, such details go to `docs/ai/LOCAL.md` (gitignored, local-only,
+NOT synced between machines). Tracked files reference it via
+`[Details: LOCAL.md]`. Counts, lesson ids, class ids and subject names
+are allowed; person names and person ids are not.
+
 ## Knowledge Bootstrap
 
 Before starting any task, read the following files in order:

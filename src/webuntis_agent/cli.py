@@ -1417,7 +1417,7 @@ def main() -> int:
     se.add_argument("--fallback", action="store_true",
                     help="tokenizing fallback: Vor-/Nachname einzeln "
                          "suchen und zusammenführen (findet z.B. "
-                         "'Clemens Unger' via Einzelteile + "
+                         "'Erika Muster' via Einzelteile + "
                          "Kurzname-Heuristik)")
     se.add_argument("--all-years", action="store_true",
                     help="bei Leerstand bzw. zusätzlich ältere Schuljahre "
@@ -1570,7 +1570,7 @@ def main() -> int:
         "find",
         help="find students by name (tokenizing, auto-fallback "
              "to older schoolyears)")
-    stu_find.add_argument("name", help="name, e.g. 'Clemens Unger'")
+    stu_find.add_argument("name", help="name, e.g. 'Erika Muster'")
     stu_find.add_argument("--class", dest="klasse", default=None,
                           help="filter by class name, e.g. 5BAIF")
     stu_find.add_argument("--json", action="store_true")

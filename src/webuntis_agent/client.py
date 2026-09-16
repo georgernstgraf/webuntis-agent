@@ -108,7 +108,7 @@ def is_shortname_hint(result: dict[str, Any],
     """Heuristic: shortName looks like Lastname+Firstname-prefix.
 
     Student shortNames follow the pattern <lastname><firstname[:3]>
-    (e.g. "UngerCle" for Clemens Unger), while displayName carries only
+    (e.g. "MusterEri" for Erika Muster), while displayName carries only
     the last name. Returns True when the shortName matches such a
     combination of two query tokens. Heuristic only — flagged via
     `searchNote: shortname-hint`, never silently.
@@ -615,7 +615,7 @@ class Client:
         returns shortName + longName + displayName for every hit.
 
         NOTE: the server does NOT match multi-word phrases across
-        first+last name (e.g. "Clemens Unger" -> []). Use
+        first+last name (e.g. "Erika Muster" -> []). Use
         search_timetable_tokens() for a tokenizing fallback.
         """
         if school_year_id is None:

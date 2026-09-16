@@ -34,3 +34,17 @@ Follow these without question. Do not deviate unless explicitly told.
 ## Testing
 - `pytest tests/test_gitlog.py` — 8 tests covering split classes, February name change, ±10/±30 window, known examples
 - Tests use real git repos (not mocked) — run from the repo with GRG-* repos present
+
+## Privacy
+- This repo is PUBLIC. No person data in any tracked file: no student or
+  teacher names, no student IDs, no person-linked details — in any file
+  (docs/ai/*, docs/*, code, tests, commit messages).
+- Person data (names, student IDs) may be written ONLY to
+  `docs/ai/LOCAL.md` (gitignored, local-only, NOT synced between
+  machines) and ONLY on explicit user request.
+- `HANDOFF.md`/`STATE.md` stay tracked but anonymized; person-specific
+  entries point to LOCAL.md via `[Details: LOCAL.md]`.
+- Allowed in tracked files: counts, lesson ids (lsId), class ids,
+  period ids, subject names.
+- Git history is never rewritten — exposure, once committed, stays.
+  Be careful BEFORE writing.

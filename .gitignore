@@ -24,6 +24,9 @@ recordings/
 *.jsonl
 !docs/*.jsonl
 
+# Person data (local-only; agent writes here ONLY on explicit user request)
+docs/ai/LOCAL.md
+
 # OS
 .DS_Store
 Thumbs.db

@@ -56,3 +56,9 @@ Superseded decisions are relocated to HISTORY.md.
 - **Reason**: WebUntis server rate-limits by IP after many API calls (TCP reset, not HTTP 429)
 - **Considered**: No retry, curl_cffi for TLS fingerprinting
 - **Tradeoff**: Adds latency on failures; curl_cffi installed as backup but not used (issue was IP-based, not TLS-fingerprint)
+
+## 2026-09-16: Person data policy — anonymized tracked files, LOCAL.md on user request
+- **Choice**: Keep `HANDOFF.md`/`STATE.md` tracked but anonymized; introduce gitignored `docs/ai/LOCAL.md` as the only file where agents may write student names/IDs, and only on explicit user request
+- **Reason**: Repo is public; past exposures of student names/IDs accepted as uncritical, but no new person data may be committed. No git-history rewrite.
+- **Considered**: Untracking HANDOFF/STATE entirely; full history rewrite (filter-repo)
+- **Tradeoff**: Old person data remains in git history (accepted); agents must actively route person data to LOCAL.md

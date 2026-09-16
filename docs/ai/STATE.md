@@ -8,24 +8,25 @@ against the live API.
 
 ## Completed (this cycle)
 - [x] Such-Fallback für Personen: `search --fallback` (Tokenizing,
-      Kurzname-Heuristik `UngerCle`), `search --all-years`
+      Kurzname-Heuristik `<Nachname><Vorname[:3]>`), `search --all-years`
       (Mehrjahr-Suche, NICHT AKTUELL geflaggt), neues
       `students find <name>` (Tokenizing + Auto-Fallback ≤3 Jahre,
       Overview-Anreicherung mit Vorname/Klasse); `search`-Default
-      unverändert. Auslöser: "Clemens Unger" (Schüler id 12097, nur
-      SJ 2025/26) wurde per Exaktphrase nicht gefunden.
-- [x] Badawi-Verwechslung geklärt und korrigiert: falscher Bruder
-      (Al Badawi Mahmoud, 19261) aus POS1 (lsId 215940) entfernt,
-      richtiger Schüler (Badawi Mhd Nour, 19405) aufgenommen
+      unverändert. Auslöser: ein Schüler (nur SJ 2025/26 vorhanden)
+      wurde per Exaktphrase nicht gefunden [Name/ID: LOCAL.md].
+- [x] Schüler-Verwechslung geklärt und korrigiert: falscher Schüler
+      aus POS1 (lsId 215940) entfernt, richtiger Schüler aufgenommen
+      [Namen/IDs: LOCAL.md]
 - [x] New CLI subcommand `students edit` (single-write add/remove,
       dry-run default, payload export via --out)
 - [x] Write-Pfad `submitStudentLessonPeriodData` erstmals live genutzt
       und per Matrix-Re-Read validiert (result=null = success)
-- [x] Klarstellung: Nour gehört in POS1 (POS-Theorie), NICHT in WMC_1;
-      WMC_1 (lsId 218839) blieb unangetastet
-- [x] Rana Aaron (21616) und Steindl Jonathan (21592) aus POS1 und WMC_1
-      entfernt (laut User gehören beide in keines der beiden Fächer;
-      je 1 Write, verifiziert per Matrix-Re-Read)
+- [x] Klarstellung: der korrekt zugeordnete Schüler gehört in POS1
+      (POS-Theorie), NICHT in WMC_1; WMC_1 (lsId 218839) blieb
+      unangetastet
+- [x] Zwei Schüler aus POS1 und WMC_1 entfernt (laut User gehören
+      beide in keines der beiden Fächer; je 1 Write, verifiziert per
+      Matrix-Re-Read) [Namen/IDs: LOCAL.md]
 - [x] Name-Auflösung für Lehrer geklärt: getTeachers/REST-/teachers 403,
       Message-Empfänger anonymisiert — einziger Weg ist
       GET /v1/timetable/search?q=..&schoolyear=.. (Kürzel → Vollname);
@@ -55,9 +56,6 @@ against the live API.
       iframe, lessonstudentlist.do, student matrix read-call)
 - [x] students add CLI (dry-run default)
 
-## Pending
-- (see top Pending item: temporary login block, retry later)
-
 ## Blockers
 - None. (Temporäre Login-Sperre nach Diagnose-Probes hat sich gelöst.)
 
@@ -65,8 +63,8 @@ against the live API.
 - Lesson ids 215940 (POS1) / 218839 (WMC_1) sind im Schuljahr 2026/27
   stabil gültig; Klassenregister-Klasse der Lektion ist 4107 (21 Schüler,
   15 attending), externe Aufnahmen haben klasse 4137 (5BAIF).
-- Beispiel: KV von 5AAIF (klasse 4134) ist Schiefer, Birgit (SB,
-  teacher id 147) — `kv 5AAIF`.
+- Beispiel: `kv 5AAIF` löst die KV der Klasse 4134 auf (Kürzel →
+  Vollname via timetable/search) [KV-Name/Teacher-ID: LOCAL.md].
 
 ## Next Session Suggestion
 - Nothing queued; new feature requests as they come up.
