@@ -26,6 +26,8 @@ fill-open-periods workflow with human confirmation.
 | Command | Purpose |
 |---------|---------|
 | `lehrstoff list --start --end [--json]` | List open periods (JSON includes lessonDetailsUrl) |
+| `search <text> [--fallback] [--all-years]` | Timetable search (exact default; tokenizing/multi-year opt-in) |
+| `students find <name> [--class]` | Student search (tokenizing + auto-fallback, NICHT AKTUELL flagged) |
 | `lehrstoff get --period <id>` | Show existing topic for a period |
 | `lehrstoff set --period --text-file\|--text-stdin\|--text` | Write single topic |
 | `lehrstoff batch-set --file <json> [--delay 1.0]` | Bulk write from JSON file |

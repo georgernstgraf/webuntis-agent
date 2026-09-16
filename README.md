@@ -72,6 +72,9 @@ cp .env.example .env
 
 ## Usage
 
+Shortcut (no venv needed): `./wu …` — e.g. `./wu search "Clemens Unger"`.
+It just sets `PYTHONPATH=src` and forwards to `webuntis_agent.cli`.
+
 ### List open periods (lessons missing a topic or absence check)
 
 ```bash

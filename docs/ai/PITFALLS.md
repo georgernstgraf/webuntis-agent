@@ -42,6 +42,23 @@ Read this file carefully before making changes in affected areas.
 
 ## Class Register / Students
 
+- **Timetable search matches no multi-word phrases**: `q="Clemens Unger"`
+  returns [], while the single tokens hit (teacher UK/MC, student
+  `UngerCle`). Always tokenize (see `search_timetable_tokens()`,
+  CLI `search --fallback`, `students find`) instead of trusting the
+  exact phrase.
+- **Student displayNames are anonymized** (last name only); the first
+  name survives only in `shortName` (`<lastname><firstname[:3]>`, e.g.
+  `UngerCle`) and in `students/overview` (`firstName`/`lastName`).
+  The shortname pattern is a heuristic — always flag it
+  (`searchNote: shortname-hint`), never silently.
+- **Former students vanish from current-year search**: timetable/search
+  is schoolyear-sensitive (e.g. id 12097 found in SJ 21, gone in 24),
+  while `students/overview` always returns the CURRENT roster. Year
+  fallback must therefore use timetable/search per year (max ~3 older
+  years), and every non-current hit must be flagged NICHT AKTUELL
+  (`current: false`). Only `students find` falls back automatically;
+  everything else keeps the current-year default.
 - **Student lists are admin-only**: `getStudents` (JSON-RPC) returns 0 and
   `/api/rest/view/v1/students` returns 500 for teacher accounts. Use
   `lessonstudentlist.do?lsid=X` (lesson participant page) to obtain

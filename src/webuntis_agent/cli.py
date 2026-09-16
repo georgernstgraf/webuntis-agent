@@ -763,11 +763,84 @@ def cmd_lehrstoff_fill_fixed(args: argparse.Namespace) -> int:
     return 0 if ok == len(results) else 1
 
 
+def _format_search_hit(r_: dict) -> str:
+    res = r_.get("resource", {})
+    line = (
+        f"{r_.get('type', '?'):>8}  id={res.get('id'):>6}  "
+        f"{res.get('shortName', ''):12} "
+        f"{res.get('displayName') or res.get('longName', '')}"
+    )
+    if r_.get("searchNote"):
+        line += f"  [{r_['searchNote']}]"
+    if r_.get("current") is False:
+        sy = r_.get("schoolYear") or {}
+        line += (f"  [SJ {sy.get('name', '?')} (id {sy.get('id', '?')})"
+                 f" — NICHT AKTUELL]")
+    return line
+
+
+def _annotate_search_hits(hits: list[dict], c: "object",
+                          school_year_id: int, current_id: int) -> list[dict]:
+    """Additive annotation for fallback/multi-year search output.
+
+    Adds `schoolYear: {id, name}` + `current: bool` to each hit (shallow
+    copies — server payload untouched). The default single-year path
+    does NOT call this, so its output is byte-identical to before.
+    """
+    label = c.schoolyear_label(school_year_id)
+    out = []
+    for h in hits:
+        h = dict(h)
+        h["schoolYear"] = {"id": school_year_id, "name": label}
+        h["current"] = (school_year_id == current_id)
+        out.append(h)
+    return out
+
+
 def cmd_search(args: argparse.Namespace) -> int:
-    """Search classes/teachers/students by text (full names included)."""
+    """Search classes/teachers/students by text (full names included).
+
+    Default (no flags): exact single-query search in one schoolyear —
+    behavior and output identical to before. --fallback adds the
+    tokenizing merge, --all-years repeats across older schoolyears
+    (hits from older years flagged NICHT AKTUELL).
+    """
     c = _make_client(args)
-    sy = c.resolve_schoolyear_id(override=args.school_year_id)
-    results = c.search_timetable(args.query, school_year_id=sy)
+    override = args.school_year_id
+    sy = c.resolve_schoolyear_id(override=override)
+    use_fallback = bool(getattr(args, "fallback", False))
+    use_all_years = bool(getattr(args, "all_years", False))
+    if not use_fallback and not use_all_years:
+        results = c.search_timetable(args.query, school_year_id=sy)
+        if args.json:
+            print(json.dumps(results, indent=2, ensure_ascii=False))
+            return 0
+        if not results:
+            print("(no results)")
+            print("hint: try --fallback (Vor-/Nachname einzeln), "
+                  "--all-years (ältere Schuljahre), or "
+                  "`students find <name>` (Schüler, auto-fallback).",
+                  file=sys.stderr)
+            return 0
+        for r_ in results:
+            res = r_.get("resource", {})
+            print(
+                f"{r_.get('type', '?'):>8}  id={res.get('id'):>6}  "
+                f"{res.get('shortName', ''):12} "
+                f"{res.get('displayName') or res.get('longName', '')}"
+            )
+        return 0
+    # Flag path: tokenizing and/or multi-year, annotated output.
+    years = [sy]
+    if use_all_years and override is None:
+        years += c.older_schoolyear_ids(sy)
+    results: list[dict] = []
+    for y in years:
+        if use_fallback:
+            hits = c.search_timetable_tokens(args.query, school_year_id=y)
+        else:
+            hits = c.search_timetable(args.query, school_year_id=y)
+        results.extend(_annotate_search_hits(hits, c, y, sy))
     if args.json:
         print(json.dumps(results, indent=2, ensure_ascii=False))
         return 0
@@ -775,12 +848,140 @@ def cmd_search(args: argparse.Namespace) -> int:
         print("(no results)")
         return 0
     for r_ in results:
-        res = r_.get("resource", {})
-        print(
-            f"{r_.get('type', '?'):>8}  id={res.get('id'):>6}  "
-            f"{res.get('shortName', ''):12} "
-            f"{res.get('displayName') or res.get('longName', '')}"
-        )
+        print(_format_search_hit(r_))
+    if any(r_.get("current") is False for r_ in results):
+        print("ACHTUNG: markierte Treffer sind NICHT AKTUELL — "
+              "nur in älteren Schuljahren gefunden.", file=sys.stderr)
+    return 0
+
+
+def cmd_students_find(args: argparse.Namespace) -> int:
+    """Find students by name with tokenizing + automatic year fallback.
+
+    Unlike `search` (current schoolyear default), this command searches
+    the current year first and then up to 3 older years automatically —
+    former students are found without extra flags. Hits from older
+    years are DEUTLICH als NICHT AKTUELL gekennzeichnet (text + JSON
+    `current: false`). --school-year-id pins to a single year (no
+    fallback). The current year is additionally matched against
+    students/overview (full first/last names + class info).
+    """
+    from webuntis_agent.client import (
+        student_matches_overview,
+        tokenize_search_query,
+    )
+    c = _make_client(args)
+    override = args.school_year_id
+    if override is not None:
+        years = [override]
+        current_id = override
+    else:
+        current_id = c.resolve_schoolyear_id()
+        years = [current_id] + c.older_schoolyear_ids(current_id)
+    tokens = tokenize_search_query(args.name)
+    cur_label = c.schoolyear_label(current_id)
+    students: list[dict] = []
+    seen_ids: set[int] = set()
+    for y in years:
+        label = c.schoolyear_label(y)
+        current = (y == current_id)
+        hits = [h for h in c.search_timetable_tokens(
+                    args.name, school_year_id=y)
+                if h.get("type") == "STUDENT"]
+        for h in hits:
+            res = h.get("resource", {})
+            sid = res.get("id")
+            if sid in seen_ids:
+                continue
+            seen_ids.add(sid)
+            entry: dict = {
+                "id": sid,
+                "shortName": res.get("shortName", ""),
+                "displayName": (res.get("displayName")
+                                or res.get("longName", "")),
+                "schoolYear": {"id": y, "name": label},
+                "current": current,
+            }
+            if h.get("searchNote"):
+                entry["searchNote"] = h["searchNote"]
+            students.append(entry)
+        if current:
+            # Enrich the current year with the full roster (first/last
+            # names + class), which the anonymized search lacks.
+            try:
+                overview = c.get_students_overview()
+            except Exception as e:
+                print(f"warning: students/overview failed ({e})",
+                      file=sys.stderr)
+                overview = {}
+            for s in overview.get("students", []):
+                if not student_matches_overview(s, tokens):
+                    continue
+                if s.get("id") in seen_ids:
+                    for e in students:
+                        if e["id"] == s.get("id"):
+                            e["firstName"] = s.get("firstName", "")
+                            e["lastName"] = s.get("lastName", "")
+                            ci = s.get("classInfo") or {}
+                            e["class"] = ci.get("name", "")
+                            e["classId"] = ci.get("id")
+                            break
+                    continue
+                seen_ids.add(s.get("id"))
+                ci = s.get("classInfo") or {}
+                students.append({
+                    "id": s.get("id"),
+                    "shortName": s.get("shortName", ""),
+                    "displayName": s.get("lastName", ""),
+                    "firstName": s.get("firstName", ""),
+                    "lastName": s.get("lastName", ""),
+                    "class": ci.get("name", ""),
+                    "classId": ci.get("id"),
+                    "schoolYear": {"id": y, "name": label},
+                    "current": True,
+                    "searchNote": "overview-match",
+                })
+    if getattr(args, "klasse", None):
+        kl = args.klasse.lower()
+        students = [s for s in students
+                    if (s.get("class") or "").lower() == kl
+                    or (s.get("shortName") or "").lower() == kl]
+    if args.json:
+        print(json.dumps({
+            "query": args.name,
+            "currentSchoolYear": {"id": current_id, "name": cur_label},
+            "yearsSearched": years,
+            "students": students,
+        }, indent=2, ensure_ascii=False))
+        return 0
+    if not students:
+        print("(no results)")
+        return 0
+    current_hits = [s for s in students if s.get("current")]
+    old_hits = [s for s in students if not s.get("current")]
+    print(f"{len(students)} Treffer für {args.name!r} "
+          f"(SJ {cur_label} + Fallback {len(years) - 1} ältere):")
+    for s in current_hits:
+        name = (f"{s.get('firstName', '')} {s.get('lastName', '')}".strip()
+                or s.get("displayName", ""))
+        cls = f" — Klasse {s['class']}" if s.get("class") else ""
+        note = f"  [{s['searchNote']}]" if s.get("searchNote") else ""
+        print(f"  STUDENT  id={s['id']:>6}  {s.get('shortName', ''):12} "
+              f"{name}{cls}{note}")
+    for s in old_hits:
+        sy = s.get("schoolYear") or {}
+        name = (f"{s.get('firstName', '')} {s.get('lastName', '')}".strip()
+                or s.get("displayName", ""))
+        note = f"  [{s['searchNote']}]" if s.get("searchNote") else ""
+        print(f"  STUDENT  id={s['id']:>6}  {s.get('shortName', ''):12} "
+              f"{name}  [SJ {sy.get('name', '?')} (id {sy.get('id', '?')})"
+              f" — NICHT AKTUELL]{note}")
+    if old_hits and not current_hits:
+        print("ACHTUNG: aktuell NICHT im System — nur Treffer aus "
+              "älteren Schuljahren.", file=sys.stderr)
+    elif old_hits:
+        print("Hinweis: markierte Treffer sind NICHT AKTUELL.",
+              file=sys.stderr)
     return 0
 
 
@@ -1213,6 +1414,16 @@ def main() -> int:
         "search", help="search classes/teachers/students (full names)")
     se.add_argument("query")
     se.add_argument("--json", action="store_true")
+    se.add_argument("--fallback", action="store_true",
+                    help="tokenizing fallback: Vor-/Nachname einzeln "
+                         "suchen und zusammenführen (findet z.B. "
+                         "'Clemens Unger' via Einzelteile + "
+                         "Kurzname-Heuristik)")
+    se.add_argument("--all-years", action="store_true",
+                    help="bei Leerstand bzw. zusätzlich ältere Schuljahre "
+                         "durchsuchen (Treffer als NICHT AKTUELL "
+                         "gekennzeichnet; --school-year-id pinnt auf ein "
+                         "Jahr ohne Fallback)")
     se.set_defaults(func=cmd_search)
 
     kv = sub.add_parser(
@@ -1354,6 +1565,16 @@ def main() -> int:
                                "attending ones (JSON always shows all)")
     stu_list.add_argument("--json", action="store_true")
     stu_list.set_defaults(func=cmd_students_list)
+
+    stu_find = stu_sub.add_parser(
+        "find",
+        help="find students by name (tokenizing, auto-fallback "
+             "to older schoolyears)")
+    stu_find.add_argument("name", help="name, e.g. 'Clemens Unger'")
+    stu_find.add_argument("--class", dest="klasse", default=None,
+                          help="filter by class name, e.g. 5BAIF")
+    stu_find.add_argument("--json", action="store_true")
+    stu_find.set_defaults(func=cmd_students_find)
 
     stu_add = stu_sub.add_parser("add",
                                  help="add a student to a lesson's attendance")

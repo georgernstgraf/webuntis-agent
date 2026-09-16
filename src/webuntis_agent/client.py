@@ -83,6 +83,99 @@ FIXED_TEXT_SUBJECTS: dict[str, str] = {
 }
 
 
+def tokenize_search_query(query: str) -> list[str]:
+    """Split a search query into deduped tokens (whitespace/comma).
+
+    Pure helper, shared by the search fallback paths.
+    """
+    seen: list[str] = []
+    lowered: set[str] = set()
+    for part in re.split(r"[\s,;]+", query.strip()):
+        if part and part.lower() not in lowered:
+            lowered.add(part.lower())
+            seen.append(part)
+    return seen
+
+
+def _search_result_text(result: dict[str, Any]) -> str:
+    res = result.get("resource", {})
+    return " ".join(str(res.get(k, "")) for k in
+                    ("shortName", "longName", "displayName")).lower()
+
+
+def is_shortname_hint(result: dict[str, Any],
+                      tokens: list[str]) -> bool:
+    """Heuristic: shortName looks like Lastname+Firstname-prefix.
+
+    Student shortNames follow the pattern <lastname><firstname[:3]>
+    (e.g. "UngerCle" for Clemens Unger), while displayName carries only
+    the last name. Returns True when the shortName matches such a
+    combination of two query tokens. Heuristic only — flagged via
+    `searchNote: shortname-hint`, never silently.
+    """
+    if len(tokens) < 2:
+        return False
+    short = str(result.get("resource", {}).get("shortName", "")).lower()
+    if not short:
+        return False
+    toks = [t.lower() for t in tokens]
+    for i, first in enumerate(toks):
+        for last in toks[i + 1:]:
+            for a, b in ((first, last), (last, first)):
+                if short == b + a[:3]:
+                    return True
+                if (len(a) >= 2 and short.startswith(b)
+                        and a[:3] in short[len(b):]):
+                    return True
+    return False
+
+
+def merge_search_results(
+    token_hits: dict[str, list[dict[str, Any]]],
+    tokens: list[str],
+) -> list[dict[str, Any]]:
+    """Merge per-token timetable/search hits.
+
+    Pure helper: dedupes by (type, id) and ranks hits matching ALL
+    tokens (in shortName/longName/displayName) before partial hits.
+    Every returned hit is a shallow copy annotated with `searchNote`
+    ("token-fallback", plus "+shortname-hint" when the heuristic fires).
+    """
+    by_key: dict[tuple, dict[str, Any]] = {}
+    for tok, hits in token_hits.items():
+        for h in hits:
+            res = h.get("resource", {})
+            key = (h.get("type"), res.get("id"))
+            entry = by_key.setdefault(key, {"hit": h, "tokens": set()})
+            entry["tokens"].add(tok.lower())
+    scored: list[tuple[tuple, dict[str, Any]]] = []
+    for (typ, _id), entry in by_key.items():
+        hit = dict(entry["hit"])
+        texts = _search_result_text(hit)
+        matches_all = all(t.lower() in texts for t in tokens)
+        hint = is_shortname_hint(hit, tokens)
+        note = "token-fallback" + ("+shortname-hint" if hint else "")
+        hit["searchNote"] = note
+        rank = (0 if matches_all else 1, -len(entry["tokens"]))
+        scored.append((rank, hit))
+    scored.sort(key=lambda s: s[0])
+    return [h for _, h in scored]
+
+
+def student_matches_overview(student: dict[str, Any],
+                             tokens: list[str]) -> bool:
+    """True when EVERY token matches first/last/short name (AND).
+
+    Pure helper for the current-roster students/overview lookup, where
+    full first+last names (unlike the anonymized search displayName)
+    are available.
+    """
+    hay = " ".join([str(student.get("firstName", "")),
+                    str(student.get("lastName", "")),
+                    str(student.get("shortName", ""))]).lower()
+    return all(t.lower() in hay for t in tokens)
+
+
 def repos_for_subject(subject_short: str) -> list[str]:
     """Return candidate GRG-* repo names for a WebUntis subject short name.
 
@@ -513,13 +606,17 @@ class Client:
     # ----- Timetable search (element lookup with full names) -----------
 
     def search_timetable(self, query: str,
-                         school_year_id: int | None = None
-                         ) -> list[dict[str, Any]]:
+                          school_year_id: int | None = None
+                          ) -> list[dict[str, Any]]:
         """Search classes/teachers/students with full display names.
 
         The only working name-resolution path for teacher accounts:
         getTeachers() and /v1/teachers are 403, but this search endpoint
         returns shortName + longName + displayName for every hit.
+
+        NOTE: the server does NOT match multi-word phrases across
+        first+last name (e.g. "Clemens Unger" -> []). Use
+        search_timetable_tokens() for a tokenizing fallback.
         """
         if school_year_id is None:
             school_year_id = self.resolve_schoolyear_id()
@@ -532,6 +629,81 @@ class Client:
         )
         r.raise_for_status()
         return r.json().get("results", [])
+
+    def search_timetable_tokens(
+        self, query: str,
+        school_year_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Tokenizing fallback around search_timetable().
+
+        Shared helper — may be reused by other subcommands. Splits the
+        query into tokens, searches each token (plus the exact phrase
+        first, so exact matches keep top rank), and merges/dedupes via
+        merge_search_results(). Annotated hits carry an extra
+        `searchNote` key ("token-fallback" / "shortname-hint"); exact
+        phrase hits are returned unannotated.
+        """
+        if school_year_id is None:
+            school_year_id = self.resolve_schoolyear_id()
+        tokens = tokenize_search_query(query)
+        if len(tokens) <= 1:
+            return self.search_timetable(query, school_year_id=school_year_id)
+        phrase_hits = self.search_timetable(query, school_year_id=school_year_id)
+        token_hits: dict[str, list[dict[str, Any]]] = {}
+        for tok in tokens:
+            token_hits[tok] = self.search_timetable(
+                tok, school_year_id=school_year_id)
+        merged = merge_search_results(token_hits, tokens)
+        seen = {(h.get("type"),
+                 h.get("resource", {}).get("id")) for h in merged}
+        top = [h for h in phrase_hits
+               if (h.get("type"), h.get("resource", {}).get("id")) not in seen]
+        return top + merged
+
+    def older_schoolyear_ids(self, current_id: int,
+                             limit: int = 3) -> list[int]:
+        """Ids of schoolyears older than `current_id`, newest first.
+
+        Ordered by dateRange start (fallback: id) and capped at `limit`
+        to avoid hammering the server with a full-history scan.
+        """
+        years = list(self.get_schoolyears())
+        cur = next((y for y in years if int(y.get("id", -1)) == current_id),
+                   None)
+        if cur is None:
+            return [int(y["id"]) for y in sorted(
+                years, key=lambda y: int(y.get("id", 0)), reverse=True)
+                if int(y.get("id", -1)) != current_id][:limit]
+        cur_start = str(cur.get("dateRange", {}).get("start", ""))
+        older = [y for y in years
+                 if str(y.get("dateRange", {}).get("start", "")) < cur_start]
+        older.sort(key=lambda y: str(
+            y.get("dateRange", {}).get("start", "")), reverse=True)
+        return [int(y["id"]) for y in older[:limit]]
+
+    def schoolyear_label(self, schoolyear_id: int) -> str:
+        """Human label for a schoolyear id, e.g. "2025/26"."""
+        for y in self.get_schoolyears():
+            if int(y.get("id", -1)) == schoolyear_id:
+                return str(y.get("name", schoolyear_id))
+        return str(schoolyear_id)
+
+    def get_students_overview(self) -> dict[str, Any]:
+        """Full student roster with first/last name + class info.
+
+        NOTE: unlike timetable/search this endpoint is NOT
+        schoolyear-sensitive — it always returns the current roster
+        (classInfo carries the current class). Former students must be
+        found via timetable/search with an older schoolyear id.
+        """
+        r = _request_with_retry(
+            self.http, "GET",
+            f"{self.host}/WebUntis/api/rest/view/v1/students/overview",
+            headers=lambda: self._rest_headers(),
+            client=self,
+        )
+        r.raise_for_status()
+        return r.json()
 
     def get_weekly_timetable_elements(self, class_id: int,
                                       date: str) -> list[dict[str, Any]]:

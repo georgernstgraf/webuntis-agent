@@ -7,6 +7,13 @@ Student attendance (Schüler-Aufnahme) feature is complete and validated
 against the live API.
 
 ## Completed (this cycle)
+- [x] Such-Fallback für Personen: `search --fallback` (Tokenizing,
+      Kurzname-Heuristik `UngerCle`), `search --all-years`
+      (Mehrjahr-Suche, NICHT AKTUELL geflaggt), neues
+      `students find <name>` (Tokenizing + Auto-Fallback ≤3 Jahre,
+      Overview-Anreicherung mit Vorname/Klasse); `search`-Default
+      unverändert. Auslöser: "Clemens Unger" (Schüler id 12097, nur
+      SJ 2025/26) wurde per Exaktphrase nicht gefunden.
 - [x] Badawi-Verwechslung geklärt und korrigiert: falscher Bruder
       (Al Badawi Mahmoud, 19261) aus POS1 (lsId 215940) entfernt,
       richtiger Schüler (Badawi Mhd Nour, 19405) aufgenommen

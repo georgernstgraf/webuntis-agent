@@ -292,6 +292,20 @@ Working path (CLI: `search`, `kv`):
   `{numPartialMatches, results:[{type: CLASS|TEACHER|STUDENT,
   resource:{id, shortName, longName, displayName}}]}` — displayName of
   a teacher is `"Lastname, Firstname (SHORT)"`.
+- Search semantics (verified 2026-09-16): the server does NOT match
+  multi-word phrases across first+last name (`"Clemens Unger"` -> [],
+  while `"Unger"` / `"Clemens"` hit). Student displayNames are
+  anonymized (last name only, e.g. `"Unger"`); the first name survives
+  only in `shortName` (`UngerCle` = Unger + Clemens[:3]) and in
+  `students/overview` (`firstName`/`lastName`/`classInfo`). The search
+  is schoolyear-sensitive: former students (e.g. id 12097 in SJ 21)
+  vanish from current-year results.
+- CLI: `search <text>` (exact, current year default; `--fallback` for
+  the tokenizing merge via `search_timetable_tokens()`, `--all-years`
+  for older years, flagged NICHT AKTUELL), `students find <name>`
+  (tokenizing + AUTOMATIC fallback to ≤3 older years, flagged
+  `current: false`; `--school-year-id` pins to one year),
+  `kv <class-id|class-name>`.
 - Klassenvorstand: JSON-RPC `getKlassen` entries carry `teacher1`
   (optionally teacher2/3) = teacher id of the class teacher.
   Resolve id → short name via the class's weekly timetable elements
@@ -303,7 +317,8 @@ Working path (CLI: `search`, `kv`):
   association in that context; otherwise the real class id (e.g.
   4137 = 5BAIF).
 
-CLI commands: `search <text>`, `kv <class-id|class-name>`,
+CLI commands: `search <text> [--fallback] [--all-years]`,
+`students find <name> [--class X]`, `kv <class-id|class-name>`,
 `students list --lsid X [--class-id Y] [--attending-only]`.
 
 ## Lessons listing (`lessons <class>`)
