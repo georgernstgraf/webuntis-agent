@@ -84,6 +84,14 @@ Read this file carefully before making changes in affected areas.
   (e.g. `getEmails` used as TitlePane href).
 - **Schoolyear ids change every year** (21 = 2025/26, 24 = 2026/27 — gap
   exists). Always resolve dynamically via schoolyears date-range match.
+- **`setSchoolyear` accepts invalid schoolyear ids silently**: passing
+  a non-existent id (e.g. 999999) to the jsonrpc_web `setSchoolyear`
+  call does NOT fail — the server just accepts it. Don't rely on it
+  for validation.
+- **Students payload must be the FULL edit-semantics list**: dropping
+  already-attending students from the `students` array un-enrolls
+  them. Always build via `_build_students_payload()` (keeps class
+  roster + all attending students of any class).
 
 ## Privacy
 

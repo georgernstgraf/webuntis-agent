@@ -1,54 +1,40 @@
 # Project State
 
-Current status as of 2026-09-17.
+Current status as of 2026-09-17 (later session, Bugfix-Serie).
 
 ## Current Focus
-Issue #1 (CLI gaps + undocumented API findings, session 2026-09-17)
-is fully implemented and live-verified; commit issued, issue stays
-open until `finish` mode.
+11 Tickets aus dem Problemezettel als GitHub Issues #2–#12 angelegt;
+Orchestrierung im Default läuft: 9 von 11 abgearbeitet, #11/#12 fast
+fertig (je 1 offener Punkt).
 
 ## Completed (this cycle)
-- [x] Generic passthrough: `rpc <method> [params-json]` and
-      `rest <path> [--method] [--data-json]` (Variante B — write-capable,
-      method+body echoed to stderr; HTTP method does NOT imply read/write
-      in this API)
-- [x] `lesson info <lsid>` — lessonTeachers, lessonKlassen,
-      mainStudentgroupId, period span, per-klasse roster vs. attending
-      (text view only attending > 0, `--json` for everything)
-- [x] `session status` — cache age/savedAt, masked JSESSIONID, live check
-      via `app/data` (exit 2 = dead session)
-- [x] `kv --student <name>` — student -> class(es) via students/overview
-      -> KV per class (tokenizing match; ambiguous hits listed)
-- [x] `app/data` real route discovered: `/WebUntis/api/rest/view/v1/app/data`
-      (payload: user incl. person/permissions, roles, currentSchoolYear
-      with timeGrid units)
-- [x] Doku-Nachzug WEBUNTIS_API.md: login-302 is NO success signal
-      (anonymousMode/loginError verification), token/new 302->index.do
-      as dead-session signature, single-session suspicion (parallel
-      logins invalidate earlier sessions), app/data section, CLI list
-- [x] `wu` wrapper fixed: symlink resolution (`readlink -f`),
-      `.venv/bin/python` autodetect, German dependency guide
-      (import-probe of httpx/websockets/playwright, exit 1 on fallback
-      path); `cli.main()` catches ModuleNotFoundError (exit 3)
-- [x] Live smoke (all green): session status (incl. transparent re-login
-      of a 2-day-old dead session), rpc getCurrentSchoolyear,
-      rest schoolyears (GET) + open-periods (POST, read-only),
-      lesson info on lsId 215940, kv/kv --student on real cases
-- [x] 8/8 pytest (tests/test_gitlog.py), privacy check on diff clean
+- [x] #9 Doku 302 korrigiert (PITFALLS + CONVENTIONS), 642c6a6
+- [x] #7 batch-set --delay Default 0.5→1.0, 149906b
+- [x] #6 fill-fixed Dry-Run-Default + --no-dry-run, 83c472b
+- [x] #2 recorder.main(argv) + record-Optionen am Subparser, 2a13c8d
+- [x] #4 resolve_schoolyear_id wirft statt falscher Arithmetik (21 vs 24), 787e446
+- [x] #8 Login fail-closed bei fehlendem anonymousMode-Marker, 0080fe1
+- [x] #10 JSON-RPC-Fehler werden ausgelöst (_raise_jsonrpc_error in rpc()/_jsonrpc_web inkl. setSchoolyear), 90c9a22
+- [x] #3 fill nutzt echte dtRange-Zeiten (startIso/endIso in _period_summary) + Gruppierung nach lsId, live verifiziert, 4b6b47a
+- [x] #5 --school-year-id durch students-Befehle in setSchoolyear gethreadet, 63b5c06
+- [x] #11 Code-Fix: _build_students_payload (edit-Semantik) für add+edit; dry-run-Verifikation lsId 215940 (Payloads identisch, 34 statt 32), 9e88068 — Issue offen bis Live-Write
+- [x] #12 Unterpunkte 1/3/4/5: chmod-Race (os.open 0o600), playwright-Dep raus, fetch_bodies gelöscht, _submit_topic_entries-Helper (batch-set/fill/fill-fixed), 53b56ce — Issue offen (Unterpunkt 2 cookies)
 
 ## Pending
-- None open. Issue #1 awaits `finish` mode (close with final report).
+- #11: ein live-verifizierter `--no-dry-run`-Write (students add) durch
+  den User abnehmen lassen.
+- #12.2: `cookies`-TODO — Entscheidung entfernen vs. implementieren.
 
 ## Blockers
 - None.
 
 ## Notes
-- `rest` passthrough paths are relative to `/WebUntis/api`, e.g.
-  `rest rest/view/v1/schoolyears` — the leading `rest/` segment belongs
-  to the real route layout (`/api/rest/view/v1/...`).
-- `session status` refreshed an old cached session via transparent
-  re-login; cache file gets rewritten by `login()` automatically.
+- Live-Verifikation offenbart: `setSchoolyear` akzeptiert ungültige
+  Schuljahr-IDs still (kein Fehler) — Server-Verhalten, dokumentiert in #5.
+- dtRange liefert echte ISO start/end je Periode — die frühere
+  +1:50-Heuristik war nie nötig.
+- `rpc`-Passthrough wirft bei Error-Payloads jetzt RuntimeError
+  (Exit ≠ 0) statt Error-JSON auszudrucken.
 
 ## Next Session Suggestion
-- Run `finish` for Issue #1 when the user confirms; new feature
-  requests as they come up.
+- #11-Write-Abnahme, #12.2-Entscheidung, dann beide Issues schließen.
