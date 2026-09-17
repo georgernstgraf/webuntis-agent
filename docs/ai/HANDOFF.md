@@ -1,6 +1,11 @@
 Open tasks:
 
-(None)
+1. [ ] Issue #1 „CLI gaps + undocumented API findings (session
+   2026-09-17)“ abarbeiten: generische `rpc`/`rest`-Passthrough-Commands,
+   `lesson info`, `session status`, `kv --student`; Doku-Nachzug
+   (Login-Verifikation 302≠Erfolg, token/new-Toten-Signatur,
+   Parallel-Login-Beobachtung, app/data). →
+   https://github.com/georgernstgraf/webuntis-agent/issues/1
 
 Recently closed (2026-09-16):
 
@@ -52,4 +57,4 @@ Recently closed (2026-09-14):
    Termine, POS1 attending 16 (15 Klasse + 1 extern), WMC_1 attending
    15 (nur Klasse). [Namen/IDs: LOCAL.md]
 
-Last updated: 2026-09-16
+Last updated: 2026-09-17
