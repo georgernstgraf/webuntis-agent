@@ -1,11 +1,18 @@
 Open tasks:
 
-1. [ ] Issue #1 „CLI gaps + undocumented API findings (session
-   2026-09-17)": VOLLSTÄNDIG implementiert und live-verifiziert
-   (rpc/rest, lesson info, session status, kv --student, Doku-Nachzug,
-   wu-Wrapper-Fix); commit ausstehen bzw. bereits committed — Issue
-   schließen im `finish`-Modus, wenn der User bestätigt. →
+1. [x] Issue #1 „CLI gaps + undocumented API findings (session
+   2026-09-17)": VOLLSTÄNDIG implementiert, live-verifiziert, committed
+   (123bd4e) und geschlossen (finish 2026-09-17). →
    https://github.com/georgernstgraf/webuntis-agent/issues/1
+
+Recently closed (2026-09-17):
+
+1. [x] Issue #1 abgearbeitet: generische `rpc`/`rest`-Passthrough-Commands
+   (Variante B), `lesson info`, `session status`, `kv --student`;
+   Doku-Nachzug (Login-302≠Erfolg, token/new→index.do,
+   Single-Session-Verdacht, app/data = /api/rest/view/v1/app/data);
+   `wu`-Wrapper gehärtet (Symlink-Auflösung, venv-Autodetect,
+   Dependency-Probe + deutscher Guide, cli-Auffangnetz Exit 3).
 
 Recently closed (2026-09-16):
 
