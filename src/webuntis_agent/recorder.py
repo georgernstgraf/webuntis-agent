@@ -87,32 +87,6 @@ def write_jsonl(path: Path, record: dict[str, Any]) -> None:
         f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
 
 
-async def fetch_bodies(
-    ws: websockets.WebSocketClientProtocol, request_id: str
-) -> dict[str, Any]:
-    """Fetch request and response bodies for a network request id."""
-    bodies: dict[str, Any] = {}
-    try:
-        await ws.send(
-            json.dumps(
-                {"id": 10_000, "method": "Network.getRequestPostData",
-                 "params": {"requestId": request_id}}
-            )
-        )
-    except Exception:
-        pass
-    try:
-        await ws.send(
-            json.dumps(
-                {"id": 10_001, "method": "Network.getResponseBody",
-                 "params": {"requestId": request_id}}
-            )
-        )
-    except Exception:
-        pass
-    return bodies
-
-
 async def record(
     ws_url: str, domain: str, net_path: Path, con_path: Path,
     cookies_path: Path, stop_event: asyncio.Event

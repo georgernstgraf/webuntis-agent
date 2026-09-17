@@ -504,6 +504,56 @@ def _read_text_arg(args: argparse.Namespace) -> str:
     return sys.stdin.read()
 
 
+def _submit_topic_entries(c, sy: int, items: list[dict],
+                          delay: float = 1.0,
+                          url_fields: bool = False) -> list[dict]:
+    """Shared write loop for lehrstoff topic submissions.
+
+    Single source of truth for `lehrstoff batch-set`, `lehrstoff fill
+    --no-dry-run` and `lehrstoff fill-fixed`: per item, resolve a
+    missing topicId (GET lesson-topic; id=0 creates a new topic row),
+    PUT the topic, sleep `delay` between PUTs (rate-limit). With
+    `url_fields`, items may carry classId/start/end/date to enrich the
+    result with a lessonDetailsUrl.
+    """
+    results: list[dict] = []
+    for i, it in enumerate(items):
+        if i and delay > 0:
+            time.sleep(delay)
+        pid = it["periodId"]
+        entry: dict = {"periodId": pid}
+        tid = it.get("topicId")
+        if tid is None:
+            try:
+                topic = c.get_lesson_topic(pid, school_year_id=sy)
+                pts = topic.get("periodTopics", [])
+                tid = (pts[0]["topic"]["id"]
+                       if pts and pts[0].get("topic") else 0)
+            except Exception as e:
+                entry["ok"] = False
+                entry["error"] = f"topicId resolution failed: {e}"
+                results.append(entry)
+                continue
+        try:
+            res = c.set_lesson_topic(pid, tid, it["text"], school_year_id=sy)
+            entry["ok"] = True
+            entry["updated"] = [t.get("id") for t in res.get("topics", [])]
+            if url_fields:
+                cls_id = it.get("classId")
+                start = it.get("start")
+                end = it.get("end")
+                ref_date = it.get("date") or (start or "")[:10]
+                if cls_id and start and end:
+                    entry["lessonDetailsUrl"] = _lesson_details_url(
+                        c.host, pid, cls_id, start, end, ref_date,
+                    )
+        except Exception as e:
+            entry["ok"] = False
+            entry["error"] = str(e)
+        results.append(entry)
+    return results
+
+
 def cmd_lehrstoff_set(args: argparse.Namespace) -> int:
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
@@ -534,43 +584,8 @@ def cmd_lehrstoff_batch_set(args: argparse.Namespace) -> int:
     items = json.loads(Path(args.file).read_text(encoding="utf-8"))
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
-    results: list[dict] = []
-    for i, it in enumerate(items):
-        if i and args.delay > 0:
-            time.sleep(args.delay)
-        pid = it["periodId"]
-        tid = it.get("topicId")
-        text = it["text"]
-        if tid is None:
-            topic = c.get_lesson_topic(pid, school_year_id=sy)
-            pts = topic.get("periodTopics", [])
-            if pts and pts[0].get("topic"):
-                tid = pts[0]["topic"]["id"]
-            else:
-                tid = 0  # Neuanlage: server creates new topic row
-        entry: dict = {"periodId": pid}
-        if tid is None:
-            entry["ok"] = False
-            entry["error"] = "no topicId resolved"
-            results.append(entry)
-            continue
-        try:
-            res = c.set_lesson_topic(pid, tid, text, school_year_id=sy)
-            topics = res.get("topics", [])
-            entry["ok"] = True
-            entry["updated"] = [t.get("id") for t in topics]
-            cls_id = it.get("classId")
-            start = it.get("start")
-            end = it.get("end")
-            ref_date = it.get("date") or (start or "")[:10]
-            if cls_id and start and end:
-                entry["lessonDetailsUrl"] = _lesson_details_url(
-                    c.host, pid, cls_id, start, end, ref_date,
-                )
-        except Exception as e:
-            entry["ok"] = False
-            entry["error"] = str(e)
-        results.append(entry)
+    results = _submit_topic_entries(
+        c, sy, items, delay=args.delay, url_fields=True)
     print(json.dumps(results, indent=2, ensure_ascii=False))
     ok = sum(1 for r in results if r.get("ok"))
     print(f"\n{ok}/{len(results)} updated", file=sys.stderr)
@@ -719,29 +734,7 @@ def cmd_lehrstoff_fill(args: argparse.Namespace) -> int:
                   file=sys.stderr)
             return 2
         items = json.loads(Path(args.file).read_text(encoding="utf-8"))
-        results: list[dict] = []
-        for i, it in enumerate(items):
-            if i and args.delay > 0:
-                time.sleep(args.delay)
-            pid = it["periodId"]
-            tid = it.get("topicId")
-            text = it["text"]
-            if tid is None:
-                topic = c.get_lesson_topic(pid, school_year_id=sy)
-                pts = topic.get("periodTopics", [])
-                if pts and pts[0].get("topic"):
-                    tid = pts[0]["topic"]["id"]
-                else:
-                    tid = 0
-            entry: dict = {"periodId": pid}
-            try:
-                res = c.set_lesson_topic(pid, tid, text, school_year_id=sy)
-                entry["ok"] = True
-                entry["updated"] = [t.get("id") for t in res.get("topics", [])]
-            except Exception as e:
-                entry["ok"] = False
-                entry["error"] = str(e)
-            results.append(entry)
+        results = _submit_topic_entries(c, sy, items, delay=args.delay)
         print(json.dumps(results, indent=2, ensure_ascii=False))
         ok = sum(1 for r in results if r.get("ok"))
         print(f"\n{ok}/{len(results)} updated", file=sys.stderr)
@@ -919,23 +912,7 @@ def cmd_lehrstoff_fill_fixed(args: argparse.Namespace) -> int:
             print("Submit with --no-dry-run.", file=sys.stderr)
         return 0
 
-    results: list[dict] = []
-    for i, e in enumerate(fixed_periods):
-        if i and args.delay > 0:
-            time.sleep(args.delay)
-        pid = e["periodId"]
-        tid = e.get("topicId") or 0
-        entry: dict = {"periodId": pid}
-        try:
-            res = c.set_lesson_topic(
-                pid, tid, e["text"], school_year_id=sy,
-            )
-            entry["ok"] = True
-            entry["updated"] = [t.get("id") for t in res.get("topics", [])]
-        except Exception as ex:
-            entry["ok"] = False
-            entry["error"] = str(ex)
-        results.append(entry)
+    results = _submit_topic_entries(c, sy, fixed_periods, delay=args.delay)
     print(json.dumps(results, indent=2, ensure_ascii=False))
     ok = sum(1 for r in results if r.get("ok"))
     print(f"\n{ok}/{len(results)} fixed-text periods filled", file=sys.stderr)

@@ -51,7 +51,7 @@ Bash shortcut (tracked at repo root), symlink-fähig: `readlink -f`
 auf `$BASH_SOURCE` → ROOT immer der Repo-Root, egal ob per Symlink
 (z. B. `~/svn/georg/EDV/Toolset/wu`) aufgerufen. Interpreter:
 bevorzugt `.venv/bin/python`, Fallback `python3` mit Import-Probe
-(httpx/websockets/playwright, einzeln) + deutscher Setup-Anleitung
+(httpx/websockets, einzeln) + deutscher Setup-Anleitung
 (Exit 1). `cli.main()` fängt zusätzlich ModuleNotFoundError (Exit 3)
 für Direktaufrufe ohne `wu`.
 

@@ -16,7 +16,7 @@ Follow these without question. Do not deviate unless explicitly told.
 - `docs/ai/` — knowledge persistence files
 - `.opencode/skills/` — opencode skills (fill-open-periods)
 - `.env` — gitignored, contains WEBUNTIS_USER/PASSWORD
-- `wu` — CLI shortcut wrapper: resolves symlinks (`readlink -f`) so it works from any directory; prefers the repo's `.venv/bin/python`, falls back to `python3` with an import-probe of httpx/websockets/playwright and a German setup guide (exit 1) when modules are missing; `cli.main()` additionally catches ModuleNotFoundError (exit 3) for direct `python -m` calls
+- `wu` — CLI shortcut wrapper: resolves symlinks (`readlink -f`) so it works from any directory; prefers the repo's `.venv/bin/python`, falls back to `python3` with an import-probe of httpx/websockets and a German setup guide (exit 1) when modules are missing; `cli.main()` additionally catches ModuleNotFoundError (exit 3) for direct `python -m` calls
 
 ## API Patterns
 - All REST calls go through `Client._rest_headers()` which injects Cookie, Authorization (Bearer JWT), Tenant-Id, X-Webuntis-Api-School-Year-Id

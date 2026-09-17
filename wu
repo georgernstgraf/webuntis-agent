@@ -21,7 +21,7 @@ PYTHON_BIN="${PYTHON_BIN:-$ROOT/.venv/bin/python}"
 # Dependencies — dort wäre die Probe nur Overhead.
 if [ "$PYTHON_BIN" != "$ROOT/.venv/bin/python" ]; then
     missing=""
-    for m in httpx websockets playwright; do
+    for m in httpx websockets; do
         "$PYTHON_BIN" -c "import $m" 2>/dev/null || missing="$missing $m"
     done
     if [ -n "$missing" ]; then

@@ -372,9 +372,11 @@ class Client:
             "savedAt": datetime.now().isoformat(timespec="seconds"),
         }
         tmp = self.session_path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
+        # O_CREAT with explicit 0o600 mode: the file must NOT exist with
+        # wide-open umask permissions even for a moment before chmod
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=1)
-        os.chmod(tmp, 0o600)
         os.replace(tmp, self.session_path)
 
     def load_cached_session(self) -> bool:
