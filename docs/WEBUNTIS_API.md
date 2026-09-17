@@ -23,7 +23,18 @@ purpose and maps to a CLI command where applicable.
 - Method: `POST /WebUntis/j_spring_security_check`
 - Content-Type: `application/x-www-form-urlencoded`
 - Body: `school=spengergasse&j_username=<user>&j_password=<pass>&token=`
-- Response: 302 redirect on success (session cookies in `Set-Cookie`)
+- Response: 302 redirect in BOTH cases — success AND wrong password
+  (a failed login still sets a fresh, anonymous JSESSIONID). The 302
+  is therefore NOT a success signal.
+- Verification: `GET /WebUntis/` with the new session cookie and parse
+  the SPA bootstrap page: `"anonymousMode":true` (optionally with
+  `"loginError":"..."`) means the login was REJECTED (wrong
+  credentials or temporary lockout/captcha). `anonymousMode:false`
+  means the session is authenticated. Implemented in `client.login()`.
+- Single-session suspicion (observed 2026-09-14 during a temporary
+  login lockout): parallel logins appear to invalidate earlier
+  sessions — a second login seems to kill the first JSESSIONID.
+  Treat sessions as single-active; avoid logging in twice concurrently.
 - CLI: implicit (called by `webuntis-agent` before any other command)
 
 ### getJwtToken
@@ -32,11 +43,27 @@ purpose and maps to a CLI command where applicable.
 - Method: `GET /WebUntis/api/token/new`
 - Headers: `Cookie: JSESSIONID=...; schoolname=...`
 - Response: plain-text JWT string (not JSON)
+- Dead-session signature: an INVALID/expired session does not answer
+  401 — `token/new` (like other session-protected endpoints) answers
+  302 redirect to `/WebUntis/index.do` instead. The client treats
+  401 OR redirect-to-index.do/login as "session lost"
+  (`Client._auth_lost()` → one transparent re-login).
 - JWT payload (decoded) contains:
   - `person_id` — the teacher id (used in `open-periods`)
   - `tenant_id` — the Tenant-Id header value
   - `username`, `host`, `sn` (school), `exp` (~15 min)
 - CLI: implicit (called internally before REST calls)
+
+## app/data (SPA bootstrap)
+
+- Purpose: the payload the SPA bootstraps from after login — whoami
+  plus tenant/schoolyear context
+- Method: `GET /WebUntis/api/rest/view/v1/app/data`
+- Headers: `Cookie`, `Authorization: Bearer <jwt>`, `Tenant-Id`
+- Response: user (login account data), roles, permissions, tenant,
+  timegrid, currentSchoolYear, ...
+- CLI: `webuntis-agent session status [--json]` (live session check;
+  `--json` includes the full payload)
 
 ## Schoolyears
 
@@ -130,6 +157,23 @@ purpose and maps to a CLI command where applicable.
   — check absences for one period
 - `webuntis-agent absences check-all --start <d> --end <d> [--delay 1.5]`
   — auto-fetch open periods and check all absences
+- `webuntis-agent rpc <method> [params-json]`
+  — generic JSON-RPC passthrough (JSON output)
+- `webuntis-agent rest <path> [--method GET|POST|PUT|DELETE] [--data-json '<json>']`
+  — generic REST passthrough to `/WebUntis/api/<path>` (JSON output;
+  method+body echoed to stderr), e.g. `rest rest/view/v1/schoolyears`
+  or `rest rest/view/v1/classreg/open-periods --method POST --data-json '{...}'`.
+  Method does NOT imply read/write: POST `open-periods` is read-only,
+  `PUT lesson-topics` writes.
+- `webuntis-agent lesson info <lsId> [--json]`
+  — lesson diagnostics: lessonTeachers, lessonKlassen,
+  mainStudentgroupId, period span, per-klasse roster vs. attending
+- `webuntis-agent session status [--json]`
+  — session cache age + live check via `app/data` (exit 2 = dead session)
+- `webuntis-agent kv <class-id|class-name> [--json]`
+  — KV of a class
+- `webuntis-agent kv --student <name>`
+  — student -> class(es) (students/overview) -> KV per class
 - `--school-year-id <N>` overrides the auto-detected schoolyear
 
 ## Subject -> GRG repo mapping

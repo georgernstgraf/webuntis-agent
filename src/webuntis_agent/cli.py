@@ -78,6 +78,171 @@ def cmd_logout(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rpc(args: argparse.Namespace) -> int:
+    """Generic JSON-RPC passthrough (read AND write methods possible)."""
+    c = _make_client(args)
+    params = {}
+    if args.params_json:
+        params = json.loads(args.params_json)
+    res = c.rpc(args.method, params)
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_rest(args: argparse.Namespace) -> int:
+    """Generic REST passthrough to /WebUntis/api/<path>.
+
+    HTTP method does NOT imply read vs. write in this API: open-periods
+    and all JSON-RPC are POST but read-only, while PUT classreg/
+    lesson-topics, submitStudentLessonPeriodData and the absencechecked
+    POST WRITE. Method + body are echoed to stderr before sending.
+    """
+    c = _make_client(args)
+    sy = args.school_year_id
+    body = None
+    if args.data_json:
+        body = json.loads(args.data_json)
+    print(f"--> {args.method} /WebUntis/api/{args.path.lstrip('/')}"
+          + (f" body={json.dumps(body, ensure_ascii=False)}"
+             if body is not None else ""),
+          file=sys.stderr)
+    res = c.rest(args.path, method=args.method, json_body=body,
+                 school_year_id=sy)
+    if isinstance(res, str):
+        print(res)
+        return 0
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    return 0
+
+
+def cmd_lesson_info(args: argparse.Namespace) -> int:
+    """Lesson diagnostics: teachers, klassen, mainStudentgroupId and the
+    per-klasse roster vs. attending distribution."""
+    c = _make_client(args)
+    matrix = c.get_student_lesson_period_matrix(args.lsid)["result"]
+    periods = matrix.get("lessonPeriods", [])
+    dates = sorted({p["date"] for p in periods})
+    distribution: dict[str, dict] = {}
+    for s in matrix.get("allStudents", []):
+        key = str(s.get("klasse"))
+        d = distribution.setdefault(
+            key, {"klasse": s.get("klasse"), "total": 0, "attending": 0,
+                  "attendanceCounts": []})
+        d["total"] += 1
+        att = s.get("attendedPeriods") or []
+        if att:
+            d["attending"] += 1
+            d["attendanceCounts"].append(len(att))
+    for d in distribution.values():
+        counts = d.pop("attendanceCounts")
+        d["termineMin"] = min(counts) if counts else 0
+        d["termineMax"] = max(counts) if counts else 0
+    info = {
+        "lsId": args.lsid,
+        "lessonSubject": matrix.get("lessonSubject"),
+        "lessonTeachers": matrix.get("lessonTeachers"),
+        "lessonKlassen": matrix.get("lessonKlassen"),
+        "allKlassen": matrix.get("allKlassen"),
+        "mainStudentgroupId": matrix.get("mainStudentgroupId"),
+        "startDate": matrix.get("startDate"),
+        "endDate": matrix.get("endDate"),
+        "periodCount": len(periods),
+        "lessonDates": dates,
+        "klasseDistribution": sorted(
+            distribution.values(),
+            key=lambda d: (str(d["klasse"])),
+        ),
+    }
+    if args.json:
+        print(json.dumps(info, indent=2, ensure_ascii=False))
+        return 0
+    print(f"lsId {args.lsid}: {info['lessonSubject']}  "
+          f"{len(periods)} Perioden "
+          f"({dates[0] if dates else '-'} .. {dates[-1] if dates else '-'})")
+    print(f"  mainStudentgroupId: {info['mainStudentgroupId']}")
+    print(f"  lessonTeachers: {info['lessonTeachers']}")
+    print(f"  lessonKlassen: {info['lessonKlassen']}")
+    print("  Klassen-Roster vs. attending (nur attending > 0; "
+          "--json für alles):")
+    shown = [d for d in info["klasseDistribution"] if d["attending"] > 0]
+    omitted = len(info["klasseDistribution"]) - len(shown)
+    for d in shown:
+        print(f"    klasse={d['klasse']:>6}  attending {d['attending']}/"
+              f"{d['total']}  Termine {d['termineMin']}..{d['termineMax']}")
+    if omitted:
+        print(f"    (+{omitted} Klassen ohne attending)")
+    return 0
+
+
+def cmd_session_status(args: argparse.Namespace) -> int:
+    """Session cache info + live check via the app/data bootstrap."""
+    from datetime import datetime as _dt
+    from pathlib import Path
+    cache_path = _session_path()
+    cached = None
+    if Path(cache_path).exists():
+        try:
+            cached = json.loads(Path(cache_path).read_text(
+                encoding="utf-8"))
+        except (OSError, ValueError):
+            cached = None
+    status: dict = {"cachePath": cache_path, "cached": cached is not None}
+    if cached:
+        saved_at = cached.get("savedAt")
+        age = None
+        if saved_at:
+            try:
+                age = (_dt.now() - _dt.fromisoformat(saved_at)).total_seconds()
+            except ValueError:
+                pass
+        status["savedAt"] = saved_at
+        status["ageSeconds"] = round(age) if age is not None else None
+        sid = str(cached.get("jsessionid", ""))
+        status["jsessionidMasked"] = (sid[:6] + "...") if len(sid) > 6 \
+            else "..."
+        status["host"] = cached.get("host")
+        status["school"] = cached.get("school")
+
+    c = _make_client(args)
+    live: dict = {"alive": False}
+    try:
+        data = c.get_app_data()
+        live["alive"] = True
+        live["user"] = data.get("user")
+        live["roles"] = data.get("roles")
+        live["permissions"] = data.get("permissions")
+        live["currentSchoolYear"] = data.get("currentSchoolYear")
+        if args.json:
+            live["appData"] = data
+    except Exception as e:
+        live["error"] = str(e)
+    status["live"] = live
+
+    if args.json:
+        print(json.dumps(status, indent=2, ensure_ascii=False))
+        return 0 if live["alive"] else 2
+    print(f"cache: {cache_path}")
+    if cached:
+        age_txt = (f"{status['ageSeconds']}s alt"
+                   if status.get("ageSeconds") is not None else "")
+        print(f"  savedAt: {status.get('savedAt')} ({age_txt})")
+        print(f"  JSESSIONID: {status.get('jsessionidMasked')}")
+        print(f"  host/school: {status.get('host')} / {status.get('school')}")
+    else:
+        print("  (kein Cache vorhanden)")
+    if live["alive"]:
+        print("live: Session ALIVE")
+        print(f"  user: {live.get('user')}")
+        if live.get("roles") is not None:
+            print(f"  roles: {live.get('roles')}")
+        if live.get("currentSchoolYear") is not None:
+            print(f"  currentSchoolYear: {live.get('currentSchoolYear')}")
+        return 0
+    print(f"live: Session NICHT lebendig ({live.get('error')})",
+          file=sys.stderr)
+    return 2
+
+
 def _fixed_text(subject: str) -> str | None:
     """Return a fixed text for subjects like SS/BESP that don't need git-log."""
     from webuntis_agent.client import FIXED_TEXT_SUBJECTS
@@ -1021,13 +1186,11 @@ def _teacher_names_for_class(c: "object", class_id: int,
     return out
 
 
-def cmd_kv(args: argparse.Namespace) -> int:
-    """Show the Klassenvorstand (class teacher) of a class."""
-    c = _make_client(args)
-    sy = c.resolve_schoolyear_id(override=args.school_year_id)
+def _kv_for_class(c: "object", sy: int, needle: int | str,
+                  json_out: bool) -> int:
+    """KV lookup for one class (id or exact name). Shared by `kv`."""
     res = c.get_klassen(schoolyear_id=sy)
     klassen = res.get("result", []) if isinstance(res, dict) else res
-    needle: int | str = args.klasse
     if isinstance(needle, str) and needle.isdigit():
         needle = int(needle)
     hit = None
@@ -1040,7 +1203,7 @@ def cmd_kv(args: argparse.Namespace) -> int:
             hit = k
             break
     if hit is None:
-        print(f"class '{args.klasse}' not found", file=sys.stderr)
+        print(f"class '{needle}' not found", file=sys.stderr)
         return 2
     teacher_ids = [v for key in ("teacher1", "teacher2", "teacher3")
                    if (v := hit.get(key))]
@@ -1050,13 +1213,65 @@ def cmd_kv(args: argparse.Namespace) -> int:
         "longName": hit.get("longName"),
         "teachers": _teacher_names_for_class(c, hit["id"], teacher_ids, sy),
     }
-    if args.json:
+    if json_out:
         print(json.dumps(info, indent=2, ensure_ascii=False))
         return 0
     print(f"{info['name']} ({info['longName']}):")
     for tid, name in info["teachers"].items():
         print(f"  KV: {name} (teacher id {tid})")
     return 0
+
+
+def cmd_kv(args: argparse.Namespace) -> int:
+    """Show the Klassenvorstand (class teacher) of a class.
+
+    Either `<klasse>` (id or name) or `--student <name>`: student ->
+    class(es) via students/overview, then KV per class.
+    """
+    if args.student is None and args.klasse is None:
+        print("either KLASSE or --student required", file=sys.stderr)
+        return 2
+    c = _make_client(args)
+    sy = c.resolve_schoolyear_id(override=args.school_year_id)
+    if args.student is not None:
+        from webuntis_agent.client import (
+            student_matches_overview,
+            tokenize_search_query,
+        )
+        tokens = tokenize_search_query(args.student)
+        try:
+            overview = c.get_students_overview()
+        except Exception as e:
+            print(f"students/overview failed ({e})", file=sys.stderr)
+            return 2
+        matches = [s for s in overview.get("students", [])
+                   if student_matches_overview(s, tokens)]
+        if not matches:
+            print(f"no current-roster student matches {args.student!r} "
+                  "(try `students find` for former students)",
+                  file=sys.stderr)
+            return 2
+        classes: dict[int, str] = {}
+        for s in matches:
+            ci = s.get("classInfo") or {}
+            if ci.get("id") is not None:
+                classes[ci["id"]] = ci.get("name", "")
+        print(f"{len(matches)} Schüler-Treffer, {len(classes)} Klasse(n):")
+        for s in matches:
+            ci = s.get("classInfo") or {}
+            name = f"{s.get('firstName', '')} {s.get('lastName', '')}".strip()
+            print(f"  id={s.get('id'):>6}  {name}  Klasse {ci.get('name', '?')}")
+        if len(classes) > 1:
+            print("mehrdeutig: Student gehört zu mehreren Treffer-Klassen — "
+                  "KV je Klasse:", file=sys.stderr)
+        rc = 0
+        for cid, cname in sorted(classes.items(), key=lambda x: str(x[1])):
+            print()
+            r = _kv_for_class(c, sy, cid if cname == "" else cname, args.json)
+            if r != 0:
+                rc = r
+        return rc
+    return _kv_for_class(c, sy, args.klasse, args.json)
 
 
 def _resolve_lsid_from_class_subject(c: "object", sy: int,
@@ -1427,10 +1642,55 @@ def main() -> int:
     se.set_defaults(func=cmd_search)
 
     kv = sub.add_parser(
-        "kv", help="show the Klassenvorstand of a class (id or name)")
-    kv.add_argument("klasse", help="class id (e.g. 4134) or name (e.g. 5AAIF)")
+        "kv", help="show the Klassenvorstand of a class (id or name), "
+                   "or of the class(es) of a student (--student)")
+    kv.add_argument("klasse", nargs="?", default=None,
+                    help="class id (e.g. 4134) or name (e.g. 5AAIF); "
+                         "required unless --student")
+    kv.add_argument("--student", default=None,
+                    help="student name: resolve student -> class(es) "
+                         "-> KV (tokenizing match on first/last/short name)")
     kv.add_argument("--json", action="store_true")
     kv.set_defaults(func=cmd_kv)
+
+    rp = sub.add_parser(
+        "rpc", help="generic JSON-RPC passthrough (JSON output)")
+    rp.add_argument("method", help="JSON-RPC method, e.g. getKlassen")
+    rp.add_argument("params_json", nargs="?", default=None,
+                    help="params as JSON string, default {}")
+    rp.set_defaults(func=cmd_rpc)
+
+    rst = sub.add_parser(
+        "rest", help="generic REST passthrough to /WebUntis/api/<path>")
+    rst.add_argument("path", help="path relative to /WebUntis/api, e.g. "
+                                  "rest/view/v1/schoolyears")
+    rst.add_argument("--method", default="GET",
+                     choices=["GET", "POST", "PUT", "DELETE"],
+                     help="HTTP method (default GET). NOTE: method does "
+                          "NOT imply read vs. write — POST open-periods "
+                          "is read-only, PUT lesson-topics writes.")
+    rst.add_argument("--data-json", default=None,
+                     help="request body as JSON string (POST/PUT)")
+    rst.set_defaults(func=cmd_rest)
+
+    les = sub.add_parser(
+        "lesson", help="lesson diagnostics")
+    les_sub = les.add_subparsers(dest="sub", required=True)
+    les_info = les_sub.add_parser(
+        "info", help="teachers, klassen, mainStudentgroupId, "
+                     "roster vs. attending distribution for one lsId")
+    les_info.add_argument("lsid", type=int, help="lesson id (lsId)")
+    les_info.add_argument("--json", action="store_true")
+    les_info.set_defaults(func=cmd_lesson_info)
+
+    sess = sub.add_parser(
+        "session", help="session cache and diagnostics")
+    sess_sub = sess.add_subparsers(dest="sub", required=True)
+    sess_status = sess_sub.add_parser(
+        "status", help="cache age + live check via app/data")
+    sess_status.add_argument("--json", action="store_true",
+                             help="include the full app/data payload")
+    sess_status.set_defaults(func=cmd_session_status)
 
     le = sub.add_parser("lehrstoff", help="Lehrstoff (lesson topic)")
     le_sub = le.add_subparsers(dest="sub", required=True)
@@ -1617,14 +1877,26 @@ def main() -> int:
     stu_edit.set_defaults(func=cmd_students_edit)
 
     args = p.parse_args()
-    if args.cmd == "record":
-        from webuntis_agent.recorder import main as rec
-        return rec()
-    if args.cmd == "cookies":
-        print("TODO: implement cookies dump")
-        return 1
-    if hasattr(args, "func"):
-        return args.func(args)
+    try:
+        if args.cmd == "record":
+            from webuntis_agent.recorder import main as rec
+            return rec()
+        if args.cmd == "cookies":
+            print("TODO: implement cookies dump")
+            return 1
+        if hasattr(args, "func"):
+            return args.func(args)
+    except ModuleNotFoundError as e:
+        print(
+            f"Fehler: Python-Modul fehlt ({e.name}).\n\n"
+            "Anleitung — venv im Repo anlegen:\n"
+            "  python3 -m venv .venv\n"
+            "  .venv/bin/pip install -e .\n\n"
+            "Danach wu (.venv/bin/python) verwenden oder "
+            "PYTHON_BIN auf das venv-Python setzen.",
+            file=sys.stderr,
+        )
+        return 3
     p.print_help()
     return 1
 

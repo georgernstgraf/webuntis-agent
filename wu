@@ -1,15 +1,44 @@
 #!/usr/bin/env bash
-# Tiny shortcut for the webuntis-agent CLI (no venv / PYTHONPATH needed).
+# Kurzbefehl für die webuntis-agent-CLI — symlink- und venv-fähig.
 #
-# Usage: ./wu search "Erika Muster"
-#        ./wu students find "Erika Muster"
-#        ./wu --help
+# Aufruf (auch über Symlinks, z. B. in ~/svn/.../Toolset):
+#   wu search "Erika Muster"
+#   wu students find "Erika Muster"
+#   wu --help
 #
-# Override the interpreter if needed: PYTHON_BIN=/path/to/python ./wu ...
+# Interpreter-Auswahl: bevorzugt wird die Repo-venv (.venv/bin/python);
+# Fallback python3 (mit Dependency-Probe + Anleitung bei Fehlern).
+# Überschreiben bei Bedarf: PYTHON_BIN=/pfad/zum/python wu ...
 set -euo pipefail
 
-ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+SELF="$(readlink -f -- "${BASH_SOURCE[0]}")"
+ROOT="$(cd -- "$(dirname -- "$SELF")" && pwd)"
+PYTHON_BIN="${PYTHON_BIN:-$ROOT/.venv/bin/python}"
+[ -x "$PYTHON_BIN" ] || PYTHON_BIN=python3
+
+# Dependency-Probe nur auf dem Fallback-Pfad: die Repo-venv wird
+# per `pip install -e .` erzeugt und enthält definitionsgemäß alle
+# Dependencies — dort wäre die Probe nur Overhead.
+if [ "$PYTHON_BIN" != "$ROOT/.venv/bin/python" ]; then
+    missing=""
+    for m in httpx websockets playwright; do
+        "$PYTHON_BIN" -c "import $m" 2>/dev/null || missing="$missing $m"
+    done
+    if [ -n "$missing" ]; then
+        cat >&2 <<EOF
+Fehler: Python-Module fehlen:$missing
+
+Anleitung — venv im Repo anlegen (Repo-Root: $ROOT):
+  cd $ROOT
+  python3 -m venv .venv
+  .venv/bin/pip install -e .
+
+Danach funktioniert wu überall (auch über Symlinks) automatisch
+mit .venv/bin/python. Alternativ: PYTHON_BIN=/pfad/zum/python wu ...
+EOF
+        exit 1
+    fi
+fi
 
 export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
 exec "$PYTHON_BIN" -m webuntis_agent.cli "$@"

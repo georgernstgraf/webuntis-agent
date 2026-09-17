@@ -16,9 +16,13 @@ Follow these without question. Do not deviate unless explicitly told.
 - `docs/ai/` — knowledge persistence files
 - `.opencode/skills/` — opencode skills (fill-open-periods)
 - `.env` — gitignored, contains WEBUNTIS_USER/PASSWORD
+- `wu` — CLI shortcut wrapper: resolves symlinks (`readlink -f`) so it works from any directory; prefers the repo's `.venv/bin/python`, falls back to `python3` with an import-probe of httpx/websockets/playwright and a German setup guide (exit 1) when modules are missing; `cli.main()` additionally catches ModuleNotFoundError (exit 3) for direct `python -m` calls
 
 ## API Patterns
 - All REST calls go through `Client._rest_headers()` which injects Cookie, Authorization (Bearer JWT), Tenant-Id, X-Webuntis-Api-School-Year-Id
+- `_request_with_retry(..., headers=...)` MUST receive auth-dependent headers as a CALLABLE (not a dict) — after a transparent re-login the retry must pick up the NEW cookie/JWT; a static dict replays the dead session
+- HTTP method does NOT imply read/write in this API: `open-periods` and all JSON-RPC are POST but read-only; writes are `PUT classreg/lesson-topics`, `submitStudentLessonPeriodData`, `absencechecked` POST. Generic passthrough (`rpc`/`rest` CLI) is therefore write-capable by design (Variante B), method+body echoed to stderr
+- REST view routes live under `/WebUntis/api/rest/view/v1/...` (e.g. `app/data` = `/api/rest/view/v1/app/data`, NOT `/api/app/data`)
 - Person search: exact `search_timetable()` matches NO multi-word phrases and student displayNames are anonymized — use the shared `search_timetable_tokens()` fallback (tokenize + shortname heuristic, flagged via `searchNote`); only `students find` falls back to older years automatically, everything else keeps the current-year default; non-current hits must always be flagged NICHT AKTUELL (`current: false`)
 - JWT is auto-refreshed 60s before expiry
 - Login via `POST /WebUntis/j_spring_security_check` (form-encoded, not JSON)

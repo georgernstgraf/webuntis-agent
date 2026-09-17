@@ -1,10 +1,10 @@
 Open tasks:
 
 1. [ ] Issue #1 „CLI gaps + undocumented API findings (session
-   2026-09-17)“ abarbeiten: generische `rpc`/`rest`-Passthrough-Commands,
-   `lesson info`, `session status`, `kv --student`; Doku-Nachzug
-   (Login-Verifikation 302≠Erfolg, token/new-Toten-Signatur,
-   Parallel-Login-Beobachtung, app/data). →
+   2026-09-17)": VOLLSTÄNDIG implementiert und live-verifiziert
+   (rpc/rest, lesson info, session status, kv --student, Doku-Nachzug,
+   wu-Wrapper-Fix); commit ausstehen bzw. bereits committed — Issue
+   schließen im `finish`-Modus, wenn der User bestätigt. →
    https://github.com/georgernstgraf/webuntis-agent/issues/1
 
 Recently closed (2026-09-16):
@@ -35,26 +35,5 @@ Recently closed (2026-09-16):
    22 Klassen-Schüler unverändert (attending 24). [Namen/IDs: LOCAL.md]
 6. [x] Such-Fallback gebaut: `search --fallback/--all-years`,
    `students find` (Auto-Fallback, NICHT AKTUELL-Flag), Wrapper `./wu`.
-
-Recently closed (2026-09-14):
-
-1. [x] Schüler-Verwechslung korrigiert: POS1 (lsId 215940) hatte
-   fälschlich den falschen von zwei Brüdern (5BAIF) — User bestätigte
-   die richtige Zuordnung: POS1 (POS-Theorie), NICHT WMC. Korrektur per
-   `students edit --lsid 215940 --class-id 4107 --add-student-id <id>
-   --remove-student-id <id> --no-dry-run`. Verifiziert per
-   Matrix-Re-Read: falscher Bruder 0 Termine, richtiger alle 18
-   (2026-09-11 .. 2027-01-29), 17 Klassen-Schüler (klasse 4107)
-   unverändert. [Namen/IDs: LOCAL.md]
-2. [x] WMC_1-Aufnahme (lsId 218839) gestrichen: der Schüler gehört
-   laut User ausdrücklich nicht in WMC. WMC_1 wurde nie beschrieben.
-3. [x] Write-Pfad `submitStudentLessonPeriodData` validiert: erster
-   echter Write lief erfolgreich (result=null), nachfolgender Re-Read
-   bestätigt.
-4. [x] Zwei Schüler (beide Klasse 4107) fälschlich mit allen 18
-   Terminen in POS1 UND WMC_1 — aus beiden Lektionen entfernt (zwei
-   Writes, je zwei `--remove-student-id`). Verifiziert: beide 0
-   Termine, POS1 attending 16 (15 Klasse + 1 extern), WMC_1 attending
-   15 (nur Klasse). [Namen/IDs: LOCAL.md]
 
 Last updated: 2026-09-17

@@ -506,6 +506,43 @@ class Client:
             h.update(extra)
         return h
 
+    # ----- Generic REST passthrough --------------------------------------
+
+    def rest(self, path: str, method: str = "GET",
+             json_body: Any = None,
+             school_year_id: int | None = None) -> Any:
+        """Generic passthrough to /WebUntis/api/<path>.
+
+        `path` is relative to /WebUntis/api (leading slash optional).
+        NOTE: HTTP method does NOT imply read vs. write in this API —
+        `classreg/open-periods` and all JSON-RPC are POST but read-only,
+        while writes are `PUT classreg/lesson-topics`,
+        `submitStudentLessonPeriodData` and the `absencechecked` POST.
+        """
+        url = f"{self.host}/WebUntis/api/{path.lstrip('/')}"
+        r = _request_with_retry(
+            self.http, method, url,
+            json=json_body if json_body is not None else None,
+            # callable: after a transparent re-login the retry must pick
+            # up the NEW session cookie / JWT
+            headers=lambda: self._rest_headers(
+                {"Content-Type": "application/json"}
+                if json_body is not None else {},
+                school_year_id=school_year_id,
+            ),
+            client=self,
+        )
+        r.raise_for_status()
+        try:
+            return r.json()
+        except ValueError:
+            return r.text
+
+    def get_app_data(self) -> dict[str, Any]:
+        """SPA bootstrap payload (user, roles, permissions, tenant,
+        timegrid, currentSchoolYear, ...)."""
+        return self.rest("rest/view/v1/app/data")
+
     # ----- Lesson Topics (Lehrstoff) -----------------------------------
 
     def get_open_periods(self, start: str, end: str,

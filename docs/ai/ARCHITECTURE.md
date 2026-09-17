@@ -1,6 +1,6 @@
 # Architecture
 
-Living structural map of the system as of 2026-08-22.
+Living structural map of the system as of 2026-09-17.
 Overwritten when structural changes occur during a session.
 
 ## Overview
@@ -19,20 +19,41 @@ fill-open-periods workflow with human confirmation.
 | `recorder.py` | CDP-Recorder: attaches to Brave:9222, captures Network + Runtime events to recordings/*.jsonl |
 | `client.py` | WebUntis HTTP client: login, JWT, REST/JSON-RPC endpoints, retry-with-backoff |
 | `gitlog.py` | GRG-* git-log analysis: pull, class folder resolution (split/February), commit diffs |
-| `cli.py` | CLI entry point: `lehrstoff list/get/set/batch-set/from-git`, `record` |
+| `cli.py` | CLI entry point: `lehrstoff *`, `lessons`, `search`, `students *`, `kv`, `absences *`, `record`, `login`/`logout`, `session status`, `lesson info`, generic `rpc`/`rest` passthrough |
 
 ## CLI Commands
 
 | Command | Purpose |
 |---------|---------|
+| `login` / `logout` | persist/invalidate the cached session (`.webuntis_session.json`) |
+| `session status [--json]` | cache age + live check via `app/data` (exit 2 = dead session) |
 | `lehrstoff list --start --end [--json]` | List open periods (JSON includes lessonDetailsUrl) |
+| `lessons <class> [--subject]` | List the user's lessons for one class, grouped by lsId |
 | `search <text> [--fallback] [--all-years]` | Timetable search (exact default; tokenizing/multi-year opt-in) |
 | `students find <name> [--class]` | Student search (tokenizing + auto-fallback, NICHT AKTUELL flagged) |
+| `students list --lsid` | Attendance matrix dump |
+| `students add` / `students edit` | Attendance writes (dry-run default) |
 | `lehrstoff get --period <id>` | Show existing topic for a period |
 | `lehrstoff set --period --text-file\|--text-stdin\|--text` | Write single topic |
 | `lehrstoff batch-set --file <json> [--delay 1.0]` | Bulk write from JSON file |
 | `lehrstoff from-git --class-name --subject --date [--dry-run]` | Derive text from git diffs |
+| `lehrstoff status/fill/verify/fill-fixed` | Open-periods overview / batch builder / text check / fixed-text fill |
+| `lesson info <lsid> [--json]` | Lesson diagnostics: teachers, klassen, mainStudentgroupId, roster vs. attending per klasse |
+| `kv <class\|name>` / `kv --student <name>` | Klassenvorstand of a class or of a student's class(es) |
+| `rpc <method> [params-json]` | Generic JSON-RPC passthrough (JSON output) |
+| `rest <path> [--method] [--data-json]` | Generic REST passthrough to `/WebUntis/api/<path>` (write-capable, method+body echoed) |
+| `absences check/batch-check/check-all` | Absenzenkontrolle |
 | `record` | Run CDP recorder |
+
+## `wu` Wrapper
+
+Bash shortcut (tracked at repo root), symlink-fähig: `readlink -f`
+auf `$BASH_SOURCE` → ROOT immer der Repo-Root, egal ob per Symlink
+(z. B. `~/svn/georg/EDV/Toolset/wu`) aufgerufen. Interpreter:
+bevorzugt `.venv/bin/python`, Fallback `python3` mit Import-Probe
+(httpx/websockets/playwright, einzeln) + deutscher Setup-Anleitung
+(Exit 1). `cli.main()` fängt zusätzlich ModuleNotFoundError (Exit 3)
+für Direktaufrufe ohne `wu`.
 
 ## Skills (`.opencode/skills/`)
 
