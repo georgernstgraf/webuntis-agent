@@ -297,12 +297,12 @@ async def amain(host: str, port: int, domain: str) -> int:
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--host", default=DEFAULT_HOST)
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
     p.add_argument("--domain", default=DEFAULT_DOMAIN)
-    args = p.parse_args()
+    args = p.parse_args(argv)
     return asyncio.run(amain(args.host, args.port, args.domain))
 
 

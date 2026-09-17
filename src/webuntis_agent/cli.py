@@ -1613,6 +1613,12 @@ def main() -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     rec = sub.add_parser("record", help="run the CDP recorder")
+    rec.add_argument("--host", default="localhost",
+                     help="CDP host of the browser (default localhost)")
+    rec.add_argument("--port", type=int, default=9222,
+                     help="CDP port of the browser (default 9222)")
+    rec.add_argument("--domain", default="spengergasse.webuntis.com",
+                     help="WebUntis domain to filter requests on")
     sub.add_parser("cookies", help="dump harvested cookies")
 
     sub.add_parser(
@@ -1887,7 +1893,8 @@ def main() -> int:
     try:
         if args.cmd == "record":
             from webuntis_agent.recorder import main as rec
-            return rec()
+            return rec([f"--host={args.host}", f"--port={args.port}",
+                        f"--domain={args.domain}"])
         if args.cmd == "cookies":
             print("TODO: implement cookies dump")
             return 1
