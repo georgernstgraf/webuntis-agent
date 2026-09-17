@@ -3,9 +3,9 @@
 Current status as of 2026-09-17 (later session, Bugfix-Serie).
 
 ## Current Focus
-11 Tickets aus dem Problemezettel als GitHub Issues #2–#12 angelegt;
-Orchestrierung im Default läuft: 9 von 11 abgearbeitet, #11/#12 fast
-fertig (je 1 offener Punkt).
+Alle 11 Tickets (#2–#12) aus dem Problemezettel abgeschlossen und
+geschlossen — inkl. #11 (Live-Write + vollständiger Revert) und #12
+(alle 5 Unterpunkte; cookies entfernt, Escape-Hatch in DECISIONS.md).
 
 ## Completed (this cycle)
 - [x] #9 Doku 302 korrigiert (PITFALLS + CONVENTIONS), 642c6a6
@@ -17,13 +17,11 @@ fertig (je 1 offener Punkt).
 - [x] #10 JSON-RPC-Fehler werden ausgelöst (_raise_jsonrpc_error in rpc()/_jsonrpc_web inkl. setSchoolyear), 90c9a22
 - [x] #3 fill nutzt echte dtRange-Zeiten (startIso/endIso in _period_summary) + Gruppierung nach lsId, live verifiziert, 4b6b47a
 - [x] #5 --school-year-id durch students-Befehle in setSchoolyear gethreadet, 63b5c06
-- [x] #11 Code-Fix: _build_students_payload (edit-Semantik) für add+edit; dry-run-Verifikation lsId 215940 (Payloads identisch, 34 statt 32), 9e88068 — Issue offen bis Live-Write
-- [x] #12 Unterpunkte 1/3/4/5: chmod-Race (os.open 0o600), playwright-Dep raus, fetch_bodies gelöscht, _submit_topic_entries-Helper (batch-set/fill/fill-fixed), 53b56ce — Issue offen (Unterpunkt 2 cookies)
+- [x] #11 _build_students_payload (edit-Semantik) für add+edit, 9e88068; live verifiziert: Write auf lsId 215940 (Ziel 0→18/18, attending 24→25), Revert exakt (alle attendedPeriods byte-identisch zum Vorher-Stand)
+- [x] #12 Unterpunkte 1/3/4/5 (chmod-Race os.open 0o600, playwright-Dep raus, fetch_bodies gelöscht, _submit_topic_entries-Helper), 53b56ce; Unterpunkt 2: cookies-Befehl entfernt, Escape-Hatch-Pfad in DECISIONS.md dokumentiert
 
 ## Pending
-- #11: ein live-verifizierter `--no-dry-run`-Write (students add) durch
-  den User abnehmen lassen.
-- #12.2: `cookies`-TODO — Entscheidung entfernen vs. implementieren.
+- None.
 
 ## Blockers
 - None.
@@ -35,6 +33,8 @@ fertig (je 1 offener Punkt).
   +1:50-Heuristik war nie nötig.
 - `rpc`-Passthrough wirft bei Error-Payloads jetzt RuntimeError
   (Exit ≠ 0) statt Error-JSON auszudrucken.
+- Browser-Cookie-Harvest (Captcha/Lockout-Escape-Hatch): siehe
+  DECISIONS.md 2026-09-17.
 
 ## Next Session Suggestion
-- #11-Write-Abnahme, #12.2-Entscheidung, dann beide Issues schließen.
+- Neue Feature-Wünsche nach Bedarf.

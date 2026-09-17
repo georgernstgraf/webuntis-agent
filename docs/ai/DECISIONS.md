@@ -57,6 +57,15 @@ Superseded decisions are relocated to HISTORY.md.
 - **Considered**: No retry, curl_cffi for TLS fingerprinting
 - **Tradeoff**: Adds latency on failures; curl_cffi installed as backup but not used (issue was IP-based, not TLS-fingerprint)
 
+## 2026-09-17: `cookies` command removed — browser-harvest kept as manual escape hatch
+- **Choice**: Remove the `cookies` TODO-stub command entirely; document the browser cookie-harvest path as a manual fallback instead
+- **Reason**: Since `client.login()` (.env credentials) + session cache exist, the harvested-cookies path is obsolete for normal operation; a TODO stub in the help is a broken promise. BUT the harvest path remains valuable as an escape hatch when programmatic login is blocked (temporary lockout / captcha after failed attempts — observed before).
+- **Escape hatch (if captcha/lockout strikes)**: log in once in the browser (started via `scripts/brave-debug.sh`), run the recorder (`wu record`), perform any page action, stop it — the recorder writes `recordings/<ts>_spengergasse_webuntis_com_cookies.json` (via CDP `Network.getAllCookies`) at session end. Build `~/.webuntis_session.json` manually from it:
+  `{"jsessionid": "<JSESSIONID>", "schoolname": "<schoolname cookie>", "school": "spengergasse", "host": "https://spengergasse.webuntis.com", "savedAt": "<iso>"}`
+  — then all CLI commands use the harvested session like a cached login.
+- **Tradeoff**: single-session suspicion — using the harvested session in the CLI may invalidate the browser session (or vice versa); browser login itself bypasses captcha, the CLI cannot.
+- **Considered**: implementing `cookies` (find newest recordings/*_cookies.json, seed the session cache, masked display + --json)
+
 ## 2026-09-16: Person data policy — anonymized tracked files, LOCAL.md on user request
 - **Choice**: Keep `HANDOFF.md`/`STATE.md` tracked but anonymized; introduce gitignored `docs/ai/LOCAL.md` as the only file where agents may write student names/IDs, and only on explicit user request
 - **Reason**: Repo is public; past exposures of student names/IDs accepted as uncritical, but no new person data may be committed. No git-history rewrite.

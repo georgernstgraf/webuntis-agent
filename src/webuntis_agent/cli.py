@@ -1638,7 +1638,6 @@ def main() -> int:
                      help="CDP port of the browser (default 9222)")
     rec.add_argument("--domain", default="spengergasse.webuntis.com",
                      help="WebUntis domain to filter requests on")
-    sub.add_parser("cookies", help="dump harvested cookies")
 
     sub.add_parser(
         "login",
@@ -1914,9 +1913,6 @@ def main() -> int:
             from webuntis_agent.recorder import main as rec
             return rec([f"--host={args.host}", f"--port={args.port}",
                         f"--domain={args.domain}"])
-        if args.cmd == "cookies":
-            print("TODO: implement cookies dump")
-            return 1
         if hasattr(args, "func"):
             return args.func(args)
     except ModuleNotFoundError as e:
