@@ -1388,6 +1388,42 @@ def cmd_students_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_students_payload(all_students: list[dict], class_id: int,
+                            add_ids: list[int], remove_ids: list[int],
+                            lesson_dates: list) -> list[dict]:
+    """Build the students list for submitStudentLessonPeriodData.
+
+    Shared edit semantics (single source of truth for `students add`
+    and `students edit`): lesson-class students unchanged, already-
+    attending students of ANY class kept (dropping them would un-enroll
+    them), removed students reset to attendedPeriods=[], added students
+    get ALL lesson dates (merged into existing attendance if already
+    partially attending). add_ids and remove_ids must be disjoint —
+    callers validate that.
+    """
+    add_set = set(add_ids)
+    remove_set = set(remove_ids)
+    keep = []
+    for s in all_students:
+        sid = s["id"]
+        if sid in remove_set:
+            continue
+        if sid in add_set:
+            keep.append({"id": sid,
+                         "attendedPeriods": sorted(
+                             set(s["attendedPeriods"]) | set(lesson_dates))})
+        elif s["klasse"] == class_id or s["attendedPeriods"]:
+            keep.append({"id": sid,
+                         "attendedPeriods": list(s["attendedPeriods"])})
+    for sid in remove_ids:
+        keep.append({"id": sid, "attendedPeriods": []})
+    known = {e["id"] for e in keep}
+    for sid in add_ids:
+        if sid not in known:
+            keep.append({"id": sid, "attendedPeriods": lesson_dates})
+    return keep
+
+
 def cmd_students_add(args: argparse.Namespace) -> int:
     """Add a student to a lesson's attendance (Schüler-Aufnahme).
 
@@ -1426,14 +1462,10 @@ def cmd_students_add(args: argparse.Namespace) -> int:
             return 2
         target = hits[0]
 
-    # students of the lesson's class (unchanged) + the added student
-    lesson_class = args.class_id
-    students_payload = [
-        {"id": s["id"], "attendedPeriods": list(s["attendedPeriods"])}
-        for s in all_students if s["klasse"] == lesson_class
-    ]
-    target_entry = {"id": target["id"], "attendedPeriods": lesson_dates}
-    students_payload.append(target_entry)
+    # payload with edit semantics: lesson class unchanged, already-
+    # attending students (any class) kept, target on all lesson dates
+    students_payload = _build_students_payload(
+        all_students, args.class_id, [target["id"]], [], lesson_dates)
 
     payload = {
         "mainStudentgroupId": result["mainStudentgroupId"],
@@ -1462,7 +1494,7 @@ def cmd_students_add(args: argparse.Namespace) -> int:
             f"\nDRY RUN: {target['name']} (id={target['id']}) would attend "
             f"{len(lesson_dates)} lesson dates of lesson {args.lsid}; "
             f"payload has {len(students_payload)} students "
-            f"(class {lesson_class} unchanged). "
+            f"(class roster + attending kept). "
             f"Submit with --no-dry-run.", file=sys.stderr)
         return 0
 
@@ -1509,16 +1541,8 @@ def cmd_students_edit(args: argparse.Namespace) -> int:
             print(f"student id {sid} not found in matrix", file=sys.stderr)
             return 2
 
-    keep = [
-        {"id": s["id"], "attendedPeriods": list(s["attendedPeriods"])}
-        for s in all_students
-        if s["id"] not in remove_ids
-        and (s["klasse"] == args.class_id or s["attendedPeriods"])
-    ]
-    for sid in remove_ids:
-        keep.append({"id": sid, "attendedPeriods": []})
-    for sid in add_ids:
-        keep.append({"id": sid, "attendedPeriods": lesson_dates})
+    keep = _build_students_payload(
+        all_students, args.class_id, add_ids, remove_ids, lesson_dates)
 
     payload = {
         "mainStudentgroupId": result["mainStudentgroupId"],
