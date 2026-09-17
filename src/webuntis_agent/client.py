@@ -858,7 +858,8 @@ class Client:
     # ----- Student Lesson Period Matrix (Schüler-Aufnahme) --------------
 
     def _jsonrpc_web(self, service: str, method: str, params: list,
-                     id_: int = 0) -> dict[str, Any]:
+                     id_: int = 0,
+                     school_year_id: int | None = None) -> dict[str, Any]:
         """Call a legacy jsonrpc_web service (needs fresh CSRF + setSchoolyear)."""
         # fresh CSRF token from embedded.do
         r = _request_with_retry(
@@ -885,7 +886,7 @@ class Client:
             }
 
         # setSchoolyear is required before other jsonrpc_web calls
-        sy = self.resolve_schoolyear_id()
+        sy = self.resolve_schoolyear_id(override=school_year_id)
         r0 = _request_with_retry(
             self.http, "POST",
             f"{self.host}/WebUntis/jsonrpc_web/jsonCalendarService",
@@ -910,16 +911,21 @@ class Client:
         self._raise_jsonrpc_error(data, method)
         return data
 
-    def get_student_lesson_period_matrix(self, ls_id: int) -> dict[str, Any]:
+    def get_student_lesson_period_matrix(
+        self, ls_id: int,
+        school_year_id: int | None = None,
+    ) -> dict[str, Any]:
         """Load the attendance matrix for a lesson (all school students)."""
         return self._jsonrpc_web(
             "jsonStudentgroupService", "getStudentLessonPeriodMatrix", [ls_id],
+            school_year_id=school_year_id,
         )
 
     def submit_student_lesson_period_data(
         self, ls_id: int, main_studentgroup_id: int,
         students: list[dict[str, Any]],
         start_date: int, end_date: int,
+        school_year_id: int | None = None,
     ) -> dict[str, Any]:
         """Save attendance changes for a lesson.
 
@@ -935,4 +941,5 @@ class Client:
         return self._jsonrpc_web(
             "jsonStudentgroupService", "submitStudentLessonPeriodData",
             [payload],
+            school_year_id=school_year_id,
         )

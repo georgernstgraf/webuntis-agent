@@ -119,7 +119,8 @@ def cmd_lesson_info(args: argparse.Namespace) -> int:
     """Lesson diagnostics: teachers, klassen, mainStudentgroupId and the
     per-klasse roster vs. attending distribution."""
     c = _make_client(args)
-    matrix = c.get_student_lesson_period_matrix(args.lsid)["result"]
+    matrix = c.get_student_lesson_period_matrix(
+        args.lsid, school_year_id=args.school_year_id)["result"]
     periods = matrix.get("lessonPeriods", [])
     dates = sorted({p["date"] for p in periods})
     distribution: dict[str, dict] = {}
@@ -1352,7 +1353,8 @@ def cmd_students_list(args: argparse.Namespace) -> int:
             return 2
         print(f"resolved {args.class_name}/{args.subject} -> lsId {lsid}",
               file=sys.stderr)
-    matrix = c.get_student_lesson_period_matrix(lsid)["result"]
+    matrix = c.get_student_lesson_period_matrix(
+        lsid, school_year_id=args.school_year_id)["result"]
     dates = sorted({p["date"] for p in matrix["lessonPeriods"]})
     students = matrix["allStudents"]
     if args.class_id is not None:
@@ -1397,7 +1399,8 @@ def cmd_students_add(args: argparse.Namespace) -> int:
     """
     from pathlib import Path
     c = _make_client(args)
-    matrix = c.get_student_lesson_period_matrix(args.lsid)
+    matrix = c.get_student_lesson_period_matrix(
+        args.lsid, school_year_id=args.school_year_id)
     result = matrix["result"]
     all_students = result["allStudents"]
     lesson_dates = sorted({p["date"] for p in result["lessonPeriods"]})
@@ -1466,6 +1469,7 @@ def cmd_students_add(args: argparse.Namespace) -> int:
     res = c.submit_student_lesson_period_data(
         payload["lessonId"], payload["mainStudentgroupId"],
         payload["students"], payload["startDate"], payload["endDate"],
+        school_year_id=args.school_year_id,
     )
     print(json.dumps(res, indent=2, ensure_ascii=False))
     return 0
@@ -1482,7 +1486,8 @@ def cmd_students_edit(args: argparse.Namespace) -> int:
     """
     from pathlib import Path
     c = _make_client(args)
-    matrix = c.get_student_lesson_period_matrix(args.lsid)
+    matrix = c.get_student_lesson_period_matrix(
+        args.lsid, school_year_id=args.school_year_id)
     result = matrix["result"]
     all_students = result["allStudents"]
     lesson_dates = sorted({p["date"] for p in result["lessonPeriods"]})
@@ -1550,6 +1555,7 @@ def cmd_students_edit(args: argparse.Namespace) -> int:
     res = c.submit_student_lesson_period_data(
         payload["lessonId"], payload["mainStudentgroupId"],
         payload["students"], payload["startDate"], payload["endDate"],
+        school_year_id=args.school_year_id,
     )
     print(json.dumps(res, indent=2, ensure_ascii=False))
     return 0
