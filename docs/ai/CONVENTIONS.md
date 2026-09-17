@@ -25,7 +25,7 @@ Follow these without question. Do not deviate unless explicitly told.
 - REST view routes live under `/WebUntis/api/rest/view/v1/...` (e.g. `app/data` = `/api/rest/view/v1/app/data`, NOT `/api/app/data`)
 - Person search: exact `search_timetable()` matches NO multi-word phrases and student displayNames are anonymized — use the shared `search_timetable_tokens()` fallback (tokenize + shortname heuristic, flagged via `searchNote`); only `students find` falls back to older years automatically, everything else keeps the current-year default; non-current hits must always be flagged NICHT AKTUELL (`current: false`)
 - JWT is auto-refreshed 60s before expiry
-- Login via `POST /WebUntis/j_spring_security_check` (form-encoded, not JSON)
+- Login via `POST /WebUntis/j_spring_security_check` (form-encoded, not JSON); the 302 redirect is NOT a success signal — verify via the `anonymousMode` marker (see `client.login()`, docs/WEBUNTIS_API.md § login)
 - `batch-set` uses `--delay 1.0` (1 second between PUTs) to avoid IP rate-limiting
 - `id: 0` in PUT body creates a new topic; existing `id` updates
 

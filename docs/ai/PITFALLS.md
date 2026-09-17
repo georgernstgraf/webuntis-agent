@@ -6,7 +6,12 @@ Read this file carefully before making changes in affected areas.
 ## API / WebUntis
 
 - **TCP reset after many API calls**: WebUntis rate-limits by IP on TCP level (not HTTP 429). After ~50 rapid calls, new connections get reset. Solution: `--delay 1.0` between PUTs, retry-with-backoff in client. Blockade clears after ~30-60 seconds.
-- **Login response is 302, not 200**: `j_spring_security_check` returns 302 on success, 200 on failure (back to login page). `follow_redirects=False` required.
+- **Login response is 302 in BOTH cases**: `j_spring_security_check`
+  redirects to `/WebUntis/` on success AND on failure (a failed login
+  still sets a fresh, anonymous JSESSIONID). The 302 is NOT a success
+  signal — verify via the `"anonymousMode":true|false` marker on the
+  SPA bootstrap page (`GET /WebUntis/`), as implemented in
+  `client.login()`. See docs/WEBUNTIS_API.md § login.
 - **httpx cookie iteration**: `self.http.cookies` yields strings, not Cookie objects. Use `self.http.cookies.jar` to get Cookie objects with `.name`/`.value`.
 - **topicId can be None**: Some periods have no existing topic row (`topic: null` in getLessonTopic response). Send `id: 0` in PUT to create new.
 - **Block auto-update**: One PUT updates ALL periods with the same `lsId` (lesson block). Don't send separate PUTs for block partners.
