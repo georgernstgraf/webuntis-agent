@@ -315,7 +315,15 @@ class Client:
             follow_redirects=True,
         )
         m = re.search(r'"anonymousMode":(true|false)', v.text)
-        if m and m.group(1) == "true":
+        if not m:
+            # fail-closed: without the marker we cannot verify the
+            # login (e.g. after a SPA layout change) — refuse to
+            # treat the session as authenticated.
+            raise RuntimeError(
+                "login could not be verified: anonymousMode marker "
+                "missing on the SPA bootstrap page (layout change?)"
+            )
+        if m.group(1) == "true":
             err = re.search(r'"loginError":"([^"]*)"', v.text)
             detail = err.group(1) if err else "session not authenticated"
             raise RuntimeError(
