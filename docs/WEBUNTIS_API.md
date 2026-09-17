@@ -74,7 +74,9 @@ purpose and maps to a CLI command where applicable.
 - Headers: `Cookie`, `Authorization: Bearer <jwt>`, `Tenant-Id`
 - Response: `[{id, name, dateRange:{start,end}}, ...]`
 - Note: the agent picks the schoolyear whose date range contains the
-  target lesson date; falls back to `current_year - 2005` if none.
+  target lesson date. There is NO arithmetic fallback (ids are not
+  derivable — 21 = 2025/26, 24 = 2026/27, with a gap): when no range
+  matches, `resolve_schoolyear_id()` raises.
   Override with `--school-year-id`.
 
 ## Lesson Topics (Lehrstoff)

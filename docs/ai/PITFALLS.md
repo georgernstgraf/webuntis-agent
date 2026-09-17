@@ -16,7 +16,11 @@ Read this file carefully before making changes in affected areas.
 - **topicId can be None**: Some periods have no existing topic row (`topic: null` in getLessonTopic response). Send `id: 0` in PUT to create new.
 - **Block auto-update**: One PUT updates ALL periods with the same `lsId` (lesson block). Don't send separate PUTs for block partners.
 - **JWT expiry ~15 min**: Must refresh before each batch. Client caches JWT and refreshes 60s before expiry.
-- **School-Year-Id**: Not constant. Derive from `getSchoolyears()` REST endpoint (matches date range) or fallback `current_year - 2005`. Override with `--school-year-id`.
+- **School-Year-Id**: Not constant. Derive from `getSchoolyears()` REST
+  endpoint (matches date range). NO arithmetic fallback — ids are not
+  derivable (21 = 2025/26, 24 = 2026/27, gap exists); when no date
+  range matches, `resolve_schoolyear_id()` raises instead of guessing.
+  Override with `--school-year-id`.
 
 ## Git-Log Analysis
 

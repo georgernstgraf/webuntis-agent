@@ -485,7 +485,11 @@ class Client:
             end = self._parse_iso(dr.get("end", ""))
             if start <= when <= end:
                 return int(sy["id"])
-        return datetime.now().year - 2005
+        raise RuntimeError(
+            f"no schoolyear matches {when.isoformat()} — schoolyear ids "
+            "are NOT derivable arithmetically (see docs/ai/PITFALLS.md); "
+            "resolve dynamically or override with --school-year-id"
+        )
 
     @staticmethod
     def _parse_iso(s: str) -> date:
