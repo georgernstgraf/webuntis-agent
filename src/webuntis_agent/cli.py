@@ -898,11 +898,12 @@ def cmd_lehrstoff_fill_fixed(args: argparse.Namespace) -> int:
         if args.json:
             print(json.dumps(fixed_periods, indent=2, ensure_ascii=False))
         else:
-            print(f"{len(fixed_periods)} fixed-text periods:")
+            print(f"{len(fixed_periods)} fixed-text periods (DRY RUN):")
             for e in fixed_periods:
                 print(f"  {e['periodId']:>10} {e['class'] or '':6} "
                       f"{e['subject'] or '':6} {e['date']} "
                       f"text={e['text']!r}")
+            print("Submit with --no-dry-run.", file=sys.stderr)
         return 0
 
     results: list[dict] = []
@@ -1778,7 +1779,12 @@ def main() -> int:
                                    help="fill SS/BESP with fixed text")
     le_fillfix.add_argument("--start", type=_date_arg, required=True)
     le_fillfix.add_argument("--end", type=_date_arg, required=True)
-    le_fillfix.add_argument("--dry-run", action="store_true")
+    le_fillfix.add_argument("--dry-run", action="store_true", default=True,
+                            help="(default) show what would be filled, "
+                                 "write nothing")
+    le_fillfix.add_argument("--no-dry-run", dest="dry_run",
+                            action="store_false",
+                            help="actually submit the fixed-text topics")
     le_fillfix.add_argument("--json", action="store_true")
     le_fillfix.add_argument("--delay", type=float, default=1.0)
     le_fillfix.set_defaults(func=cmd_lehrstoff_fill_fixed)
