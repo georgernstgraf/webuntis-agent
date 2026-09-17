@@ -648,6 +648,8 @@ def _period_summary(p: dict) -> dict:
         "subjectLong": subj.get("name"),
         "date": (dt.get("start") or "")[:10],
         "time": (dt.get("start") or "")[11:16],
+        "startIso": dt.get("start"),
+        "endIso": dt.get("end"),
         "lsId": per.get("lsId"),
         "hr": per.get("hr"),
         "topicNeeded": p.get("topicNeeded"),
@@ -688,7 +690,6 @@ def cmd_lehrstoff_fill(args: argparse.Namespace) -> int:
     Without --dry-run: reads a confirmed batch JSON (--file) and submits.
     """
     from collections import defaultdict
-    from datetime import timedelta
     from pathlib import Path
     from webuntis_agent.client import repos_for_subject, FIXED_TEXT_SUBJECTS
     from webuntis_agent.gitlog import (
@@ -702,10 +703,14 @@ def cmd_lehrstoff_fill(args: argparse.Namespace) -> int:
         return 0
 
     summaries = [_period_summary(p) for p in periods]
-    day_blocks: dict[tuple, list[dict]] = defaultdict(list)
+    # group by lesson (lsId) — one PUT updates all block partners; fall
+    # back to (class, subject, date) only when lsId is missing
+    blocks: dict[tuple, list[dict]] = defaultdict(list)
     for s in summaries:
-        key = (s["class"], s["subject"], s["date"])
-        day_blocks[key].append(s)
+        lsid = s.get("lsId")
+        key = ("lsid", lsid) if lsid is not None else \
+            ("fallback", s["class"], s["subject"], s["date"])
+        blocks[key].append(s)
 
     if not args.dry_run:
         if not args.file:
@@ -744,10 +749,11 @@ def cmd_lehrstoff_fill(args: argparse.Namespace) -> int:
     # dry-run: build raw data for the skill/agent
     blocks_out: list[dict] = []
     skipped: list[dict] = []
-    for (cls, subj, d), block_periods in sorted(
-        day_blocks.items(), key=lambda x: x[0][2]
-    ):
+    for key, block_periods in blocks.items():
         p0 = block_periods[0]
+        cls = p0["class"]
+        subj = p0["subject"]
+        d = p0["date"]
         entry = {
             "periodId": p0["periodId"],
             "topicId": p0["topicId"],
@@ -760,10 +766,15 @@ def cmd_lehrstoff_fill(args: argparse.Namespace) -> int:
             "lsId": p0["lsId"],
             "blockPeriods": [bp["periodId"] for bp in block_periods],
         }
-        d_obj = date.fromisoformat(d)
-        start_iso = f"{d}T{p0['time']}:00"
-        end_dt = d_obj + timedelta(hours=1, minutes=50)
-        end_iso = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
+        # real dtRange times; block start = earliest, end = latest
+        starts = [bp["startIso"] for bp in block_periods if bp.get("startIso")]
+        ends = [bp["endIso"] for bp in block_periods if bp.get("endIso")]
+        start_iso = min(starts) if starts else f"{d}T{p0['time']}:00"
+        if ends:
+            end_iso = max(ends)
+        else:
+            end_iso = start_iso
+            entry["warning"] = "no dtRange.end in open-periods payload"
         entry["start"] = start_iso
         entry["end"] = end_iso
 
@@ -787,7 +798,7 @@ def cmd_lehrstoff_fill(args: argparse.Namespace) -> int:
             continue
 
         commits = get_commits_for_class(
-            cls, d_obj, repo_filter=repos,
+            cls, date.fromisoformat(d), repo_filter=repos,
         )
         commit_data: list[dict] = []
         for ci in commits:
@@ -813,6 +824,7 @@ def cmd_lehrstoff_fill(args: argparse.Namespace) -> int:
             )
         blocks_out.append(entry)
 
+    blocks_out.sort(key=lambda e: e.get("start") or "")
     output = {"blocks": blocks_out, "skipped": skipped}
     print(json.dumps(output, indent=2, ensure_ascii=False))
     print(
