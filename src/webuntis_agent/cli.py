@@ -1733,8 +1733,9 @@ def main() -> int:
     le_batch.add_argument("--file", required=True,
                           help="JSON file: [{periodId, topicId, text, "
                                "classId, start, end, date}, ...]")
-    le_batch.add_argument("--delay", type=float, default=0.5,
-                          help="seconds to wait between PUTs (default 0.5)")
+    le_batch.add_argument("--delay", type=float, default=1.0,
+                          help="seconds to wait between PUTs (default 1.0, "
+                               "avoids IP rate-limiting)")
     le_batch.set_defaults(func=cmd_lehrstoff_batch_set)
 
     le_git = le_sub.add_parser("from-git",
