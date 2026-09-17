@@ -635,7 +635,30 @@ class Client:
             client=self,
         )
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        self._raise_jsonrpc_error(data, method)
+        return data
+
+    @staticmethod
+    def _raise_jsonrpc_error(data: Any, method: str) -> None:
+        """Raise when a JSON-RPC payload carries an `error` object.
+
+        Without this, server-side errors surface downstream as bogus
+        empty results (e.g. getKlassen error -> "class not found").
+        """
+        if isinstance(data, dict) and data.get("error") is not None:
+            err = data["error"]
+            if isinstance(err, dict):
+                code = err.get("code", "?")
+                msg = err.get("message", err)
+                extra = {k: v for k, v in err.items()
+                         if k not in ("code", "message")}
+            else:
+                code, msg, extra = "?", err, {}
+            raise RuntimeError(
+                f"JSON-RPC {method} failed (code {code}): {msg}"
+                + (f" {extra}" if extra else "")
+            )
 
     def get_klassen(self, schoolyear_id: int | None = None) -> dict[str, Any]:
         params = {}
@@ -872,6 +895,7 @@ class Client:
             client=self,
         )
         r0.raise_for_status()
+        self._raise_jsonrpc_error(r0.json(), "setSchoolyear")
 
         r = _request_with_retry(
             self.http, "POST",
@@ -882,7 +906,9 @@ class Client:
             client=self,
         )
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        self._raise_jsonrpc_error(data, method)
+        return data
 
     def get_student_lesson_period_matrix(self, ls_id: int) -> dict[str, Any]:
         """Load the attendance matrix for a lesson (all school students)."""
