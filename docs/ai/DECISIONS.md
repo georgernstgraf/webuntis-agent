@@ -77,3 +77,9 @@ Superseded decisions are relocated to HISTORY.md.
 - **Reason**: `cli.py` ~2000 lines Divergent Change (review #15); dict wire format keeps tests/skill contracts stable
 - **Considered**: Big-bang rewrite of outputs to dataclasses; leaving the monolith
 - **Tradeoff**: 5 modules + re-export layer; `from webuntis_agent.cli import …` keeps working (e.g. tests/test_lessons.py unchanged)
+
+## 2026-09-18: roster falls back to nearest unit and labels the effective date
+- **Choice**: `students roster` with no unit on the requested date lists the nearest upcoming unit (else last held) instead of erroring; the stdout header then carries the effective date (`3AAIF/WMC_1 (2026-09-22)`), `--json` reports `date` + `requestedDate`
+- **Reason**: User always wants a class list (attendance check happens anyway); a mislabeled list would be worse than a substituted one, hence the visible date + stderr note
+- **Considered**: Hard error on missing unit (first version); nearest-by-distance with future tie-break (rejected — no date tricks)
+- **Tradeoff**: Pasted lists may cover a different day than requested — mitigated by the visible effective date

@@ -59,13 +59,17 @@ from webuntis_agent.cli_misc import (
 )
 from webuntis_agent.cli_students import (
     _teacher_names_for_class,
-    _resolve_lsid_from_class_subject,
+    _pick_closest_lesson,
+    _resolve_lesson_from_class_subject,
+    _lesson_label_for_lsid,
+    _resolve_roster_date,
     cmd_students_list,
     cmd_students_find,
     _build_students_payload,
     _finish_students_command,
     cmd_students_add,
     cmd_students_edit,
+    cmd_students_roster,
 )
 
 __all__ = [
@@ -100,13 +104,17 @@ __all__ = [
     "cmd_lehrstoff_verify",
     "cmd_lehrstoff_fill_fixed",
     "_teacher_names_for_class",
-    "_resolve_lsid_from_class_subject",
+    "_pick_closest_lesson",
+    "_resolve_lesson_from_class_subject",
+    "_lesson_label_for_lsid",
+    "_resolve_roster_date",
     "cmd_students_list",
     "cmd_students_find",
     "_build_students_payload",
     "_finish_students_command",
     "cmd_students_add",
     "cmd_students_edit",
+    "cmd_students_roster",
     "cmd_check_absences",
     "cmd_batch_check_absences",
     "cmd_check_all_absences",
@@ -422,6 +430,26 @@ def main() -> int:
     stu_edit.add_argument("--verbose", action="store_true")
     _add_school_year_arg(stu_edit)
     stu_edit.set_defaults(func=cmd_students_edit)
+
+    stu_roster = stu_sub.add_parser(
+        "roster",
+        help="Excel-pasteable TSV participant list for one lesson unit")
+    stu_roster.add_argument("--lsid", type=int, default=None,
+                            help="lesson id; optional if CLASS SUBJECT given")
+    stu_roster.add_argument("class_name", nargs="?", default=None,
+                            help="class name, e.g. 3AAIF (with SUBJECT "
+                                 "resolves the lsId automatically)")
+    stu_roster.add_argument("subject", nargs="?", default=None,
+                            help="subject short name, e.g. WMC")
+    stu_roster.add_argument("--date", type=_resolve_roster_date,
+                            default="now",
+                            help="unit day: YYYY-MM-DD or 'now' (= today, "
+                                 "default)")
+    stu_roster.add_argument("--no-header", action="store_true",
+                            help="omit the 'Name<TAB>Klasse' header row")
+    stu_roster.add_argument("--json", action="store_true")
+    _add_school_year_arg(stu_roster)
+    stu_roster.set_defaults(func=cmd_students_roster)
 
     args = p.parse_args()
     try:

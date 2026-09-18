@@ -30,6 +30,8 @@ Follow these without question. Do not deviate unless explicitly told.
 - `id: 0` in PUT body creates a new topic; existing `id` updates
 - `--school-year-id` works before AND after the subcommand (subparser copies use `default=SUPPRESS`, subcommand wins on double use)
 - `fill-fixed --json`: JSON with the flag, human-readable lines without — in BOTH dry-run and write paths
+- Export commands keep stdout paste-clean (TSV/JSON only); all diagnostics, warnings and notes go to stderr
+- Ambiguous `CLASS SUBJECT` lessons auto-pick the closest `lsId` to the reference date with a stderr label block (one `class/subject (date)` line per candidate)
 
 ## Git-Log Analysis
 - `get_commits_for_class(class, date, repo_filter=repos)` — always pass `repo_filter` to scope to candidate repos

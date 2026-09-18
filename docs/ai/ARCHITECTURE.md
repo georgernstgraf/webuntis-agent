@@ -37,6 +37,7 @@ fill-open-periods workflow with human confirmation.
 | `search <text> [--fallback] [--all-years]` | Timetable search (exact default; tokenizing/multi-year opt-in) |
 | `students find <name> [--class]` | Student search (tokenizing + auto-fallback, NICHT AKTUELL flagged) |
 | `students list --lsid` | Attendance matrix dump |
+| `students roster CLASS SUBJECT [--date <YYYY-MM-DD\|now>]` | Excel-pasteable TSV unit participants (`Name<TAB>Klasse`, header default; `--date` default `now`; ambiguous lessons auto-pick closest + stderr label block) |
 | `students add` / `students edit` | Attendance writes (dry-run default) |
 | `lehrstoff get --period <id>` | Show existing topic for a period |
 | `lehrstoff set --period --text-file\|--text-stdin\|--text` | Write single topic |

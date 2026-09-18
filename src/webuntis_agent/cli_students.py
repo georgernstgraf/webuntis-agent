@@ -9,6 +9,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from webuntis_agent.cli_common import (
+    _date_arg,
     _make_client,
     _open_period_entries,
 )
@@ -53,21 +54,62 @@ def _teacher_names_for_class(c: Client, class_id: int,
     return out
 
 
-def _resolve_lsid_from_class_subject(c: Client, sy: int,
-                                     class_name: str, subject: str) -> int:
-    """Find the lsId of a (class, subject) lesson via open periods.
+def _pick_closest_lesson(matches: dict[int, list[str]],
+                         ref_date: str) -> int:
+    """Pick the lsId whose dates best match ref_date (YYYY-MM-DD).
+
+    An exact date hit (distance 0) wins; otherwise the smallest
+    absolute day distance; ties broken by smallest lsId (deterministic).
+    Pure function (no network) — unit-tested.
+    """
+    from datetime import date as _date
+    ref = _date.fromisoformat(ref_date)
+
+    def dist(dates: list[str]) -> int:
+        deltas = []
+        for d in dates:
+            try:
+                deltas.append(abs((_date.fromisoformat(d) - ref).days))
+            except ValueError:
+                continue
+        return min(deltas) if deltas else 10 ** 9
+
+    return min(matches, key=lambda lsid: (dist(matches[lsid]), lsid))
+
+
+def _nearest_date(dates: list[str], ref_date: str) -> str:
+    """Nearest unit date to ref_date (both YYYY-MM-DD).
+
+    Smallest absolute day distance; ties broken by earlier date.
+    Pure function (no network) — unit-tested.
+    """
+    from datetime import date as _date
+    ref = _date.fromisoformat(ref_date)
+    return min(dates, key=lambda d: (abs((_date.fromisoformat(d) - ref).days),
+                                     d))
+
+
+def _resolve_lesson_from_class_subject(
+        c: Client, sy: int, class_name: str, subject: str,
+        ref_date: str | None = None) -> dict:
+    """Find the lesson of a (class, subject) pair, return match details.
 
     Scans a window around today (7 days back, 13 ahead). Case-
     insensitive matching; subject falls back to a prefix match. Returns
-    the single matching lsId or raises RuntimeError with candidates.
+    `{"lsId", "class", "subject", "dates", "candidates"}` with the
+    exact Untis class/subject strings of the picked lesson. On multiple
+    matches the one closest to `ref_date` (default: today) is picked
+    and a warning is printed to stderr; no match raises RuntimeError
+    with candidates.
     """
     from datetime import date as _date, timedelta as _timedelta
+    ref = ref_date or _date.today().isoformat()
     start = (_date.today() - _timedelta(days=7)).isoformat()
     end = (_date.today() + _timedelta(days=13)).isoformat()
     entries = _open_period_entries(c, sy, start, end)
     cls_l = class_name.lower()
     subj_l = subject.lower()
-    matches: dict[int, list[str]] = {}
+    matches: dict[int, dict] = {}
     for e in entries:
         if (e["class"] or "").lower() != cls_l:
             continue
@@ -77,7 +119,9 @@ def _resolve_lsid_from_class_subject(c: Client, sy: int,
                 or subj_l.startswith(subj.lower())):
             continue
         if e["lsId"] is not None:
-            matches.setdefault(e["lsId"], []).append(e["date"])
+            m = matches.setdefault(e["lsId"], {"dates": [], "units": []})
+            m["dates"].append(e["date"])
+            m["units"].append((e["date"], e["class"], e["subject"]))
     if not matches:
         avail = sorted({(e["class"] or "", e["subject"] or "")
                         for e in entries})
@@ -87,12 +131,30 @@ def _resolve_lsid_from_class_subject(c: Client, sy: int,
             f"{start}..{end}" + (f"; available for {class_name}: {hints}"
                                  if hints else ""))
     if len(matches) > 1:
-        cands = "; ".join(
-            f"lsId={lsid} ({', '.join(sorted(set(ds)))})"
-            for lsid, ds in sorted(matches.items()))
-        raise RuntimeError(
-            f"ambiguous lesson for {class_name}/{subject}: {cands}")
-    return next(iter(matches))
+        picked = _pick_closest_lesson(
+            {lsid: m["dates"] for lsid, m in matches.items()}, ref)
+        print(f"warning: ambiguous lesson for {class_name}/{subject}: "
+              f"{len(matches)} candidates, picked lsId={picked} "
+              f"closest to {ref}", file=sys.stderr)
+        for lsid in sorted(matches):
+            m = matches[lsid]
+            units = sorted({(u[1], u[2]) for u in m["units"]})
+            # one line per candidate: exact Untis label + unit date
+            # nearest to ref (all units share class/subject per lesson,
+            # first label wins on mixed data)
+            klass, subj = units[0]
+            print(f"{klass}/{subj} "
+                  f"({_nearest_date(m['dates'], ref)})", file=sys.stderr)
+    else:
+        picked = next(iter(matches))
+    m = matches[picked]
+    # label: prefer the unit entry on ref_date (exact Untis designation
+    # of the requested unit), else the first entry of the lesson
+    label_unit = next((u for u in m["units"] if u[0] == ref), m["units"][0])
+    return {"lsId": picked, "class": label_unit[1],
+            "subject": label_unit[2],
+            "dates": sorted(set(m["dates"])),
+            "candidates": sorted(matches)}
 
 
 def cmd_students_list(args: argparse.Namespace) -> int:
@@ -111,12 +173,14 @@ def cmd_students_list(args: argparse.Namespace) -> int:
             return 2
         sy = c.resolve_schoolyear_id(override=args.school_year_id)
         try:
-            lsid = _resolve_lsid_from_class_subject(
+            lesson = _resolve_lesson_from_class_subject(
                 c, sy, args.class_name, args.subject)
+            lsid = lesson["lsId"]
         except RuntimeError as e:
             print(str(e), file=sys.stderr)
             return 2
-        print(f"resolved {args.class_name}/{args.subject} -> lsId {lsid}",
+        print(f"resolved {args.class_name}/{args.subject} -> lsId {lsid} "
+              f"({lesson['class']}/{lesson['subject']})",
               file=sys.stderr)
     matrix = c.get_student_lesson_period_matrix(
         lsid, school_year_id=args.school_year_id)["result"]
@@ -473,5 +537,162 @@ def cmd_students_edit(args: argparse.Namespace) -> int:
         f"on lesson {args.lsid} ({len(lesson_dates)} lesson dates); "
         f"payload has {len(keep)} students. "
         f"Submit with --no-dry-run.")
+
+
+def _lesson_label_for_lsid(c: Client, sy: int, lsid: int,
+                           day: str) -> str | None:
+    """Best-effort exact 'class/subject' label for an lsId (#16).
+
+    Reverse lookup via open periods on the unit day itself. Returns None
+    when the lesson has no open periods that day (all topics set and
+    absences checked) — callers then omit the label line.
+    """
+    try:
+        entries = _open_period_entries(c, sy, day, day)
+    except Exception:
+        return None
+    for e in entries:
+        if (e.get("lsId") == lsid and e.get("class")
+                and e.get("subject")):
+            return f"{e['class']}/{e['subject']}"
+    return None
+
+
+def _resolve_roster_date(value: str) -> str:
+    """Resolve --date for `students roster`: 'now' -> today (YYYY-MM-DD),
+    otherwise a validated YYYY-MM-DD date."""
+    if value.lower() == "now":
+        from datetime import date as _date
+        return _date.today().isoformat()
+    return _date_arg(value)
+
+
+def _tsv_cell(value: object) -> str:
+    """Make a value TSV-safe (no tabs/newlines inside a cell)."""
+    return str(value if value is not None else "").replace("\t", " ").replace(
+        "\n", " ").replace("\r", "")
+
+
+def _roster_rows(matrix_result: dict, overview_by_id: dict,
+                 ymd: int) -> tuple[list[tuple[str, str]], list[str]]:
+    """Build sorted (name-cell, klasse-cell) TSV rows for one unit date.
+
+    Participants are matrix students whose attendedPeriods contain `ymd`.
+    Names come from students/overview (full first/last names — matrix
+    names are shortened); matrix names are the fallback. Returns
+    (rows, unmatched_names); rows are sorted by (last, first).
+    """
+    klassen = {k.get("id"): k.get("name")
+               for k in matrix_result.get("allKlassen", [])}
+    keyed: list[tuple[tuple[str, str], str, str]] = []
+    unmatched: list[str] = []
+    for s in matrix_result.get("allStudents", []):
+        if ymd not in (s.get("attendedPeriods") or []):
+            continue
+        ov = overview_by_id.get(s.get("id"))
+        if ov and ov.get("lastName"):
+            last = ov.get("lastName", "")
+            first = ov.get("firstName", "")
+            sortkey = (last.lower(), first.lower())
+            cell = f"{last} {first}".strip()
+            klass = (ov.get("classInfo") or {}).get("name")
+        else:
+            cell = s.get("name", "")
+            sortkey = (cell.lower(), "")
+            klass = None
+            unmatched.append(cell)
+        if not klass:
+            klass = klassen.get(s.get("klasse"), str(s.get("klasse")))
+        keyed.append((sortkey, _tsv_cell(cell), _tsv_cell(klass)))
+    keyed.sort(key=lambda r: r[0])
+    return [(name, klass) for _, name, klass in keyed], unmatched
+
+
+def cmd_students_roster(args: argparse.Namespace) -> int:
+    """Excel-pasteable TSV participant list for one lesson unit (#16).
+
+    The lesson is given by --lsid, or resolved from positional
+    CLASS SUBJECT (e.g. `students roster 3AAIF WMC --date now`) via the
+    open periods of a window around today. --date (YYYY-MM-DD or 'now')
+    selects the unit day: participants are students whose
+    attendedPeriods contain that date — the same set Untis shows when
+    opening that unit's attendance check. Read-only (no writes).
+    """
+    c = _make_client(args)
+    day = args.date
+    ymd = int(day.replace("-", ""))
+    sy = c.resolve_schoolyear_id(override=args.school_year_id)
+    lsid = args.lsid
+    lesson_label = None
+    if lsid is None:
+        if not args.class_name or not args.subject:
+            print("either --lsid or CLASS SUBJECT are required",
+                  file=sys.stderr)
+            return 2
+        try:
+            lesson = _resolve_lesson_from_class_subject(
+                c, sy, args.class_name, args.subject, ref_date=day)
+            lsid = lesson["lsId"]
+            lesson_label = f"{lesson['class']}/{lesson['subject']}"
+        except RuntimeError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(f"resolved {args.class_name}/{args.subject} -> lsId {lsid} "
+              f"({lesson_label})",
+              file=sys.stderr)
+    else:
+        lesson_label = _lesson_label_for_lsid(c, sy, lsid, day)
+    result = c.get_student_lesson_period_matrix(
+        lsid, school_year_id=args.school_year_id)["result"]
+    period_dates = {p.get("date") for p in result.get("lessonPeriods", [])}
+    requested_day = day
+    if ymd not in period_dates:
+        if not period_dates:
+            print(f"no lesson units at all for lsId {lsid}", file=sys.stderr)
+            return 2
+        # future-first fallback (#16): nearest upcoming unit, else last held
+        future = [d for d in period_dates if d > ymd]
+        pick = min(future) if future else max(period_dates)
+        day = f"{pick // 10000:04d}-{(pick // 100) % 100:02d}-{pick % 100:02d}"
+        ymd = pick
+        print(f"note: no unit on {requested_day} for lsId {lsid}, "
+              f"using nearest unit {day}", file=sys.stderr)
+    try:
+        overview = c.get_students_overview()
+    except Exception as e:
+        print(f"warning: students/overview failed ({e}) — "
+              "using short matrix names", file=sys.stderr)
+        overview = {}
+    by_id = {s.get("id"): s for s in overview.get("students", [])}
+    rows, unmatched = _roster_rows(result, by_id, ymd)
+    if args.json:
+        payload: dict = {
+            "lsId": lsid,
+            "lesson": lesson_label,
+            "date": day,
+            "students": [{"name": name, "klasse": klass}
+                         for name, klass in rows],
+        }
+        if day != requested_day:
+            payload["requestedDate"] = requested_day
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        return 0
+    if lesson_label:
+        print(lesson_label if day == requested_day
+              else f"{lesson_label} ({day})")
+    if not args.no_header:
+        print("Name\tKlasse")
+    for name, klass in rows:
+        print(f"{name}\t{klass}")
+    expected = next((p.get("studentCount")
+                     for p in result.get("lessonPeriods", [])
+                     if p.get("date") == ymd), None)
+    if expected is not None and expected != len(rows):
+        print(f"warning: studentCount={expected} but {len(rows)} rows listed",
+              file=sys.stderr)
+    if unmatched:
+        print(f"note: {len(unmatched)} without overview match "
+              "(short names used)", file=sys.stderr)
+    return 0
 
 

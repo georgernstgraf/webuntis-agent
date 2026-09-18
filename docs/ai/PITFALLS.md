@@ -62,6 +62,13 @@ Read this file carefully before making changes in affected areas.
   `students/overview` (`firstName`/`lastName`).
   The shortname pattern is a heuristic — always flag it
   (`searchNote: shortname-hint`), never silently.
+- **Matrix student names are shortened too** (`allStudents[].name` is
+  `"Nachname Vorname"` with the first name cut) — join
+  `students/overview` by student id for full names (as `students roster`
+  does); matrix name is only the fallback for ids missing from overview.
+- **Matrix dates are int YYYYMMDD** (`lessonPeriods[].date`,
+  `attendedPeriods[]`), while open-periods/dtRange use ISO strings —
+  convert explicitly when comparing (`int(day.replace("-", ""))`).
 - **Former students vanish from current-year search**: timetable/search
   is schoolyear-sensitive (a student id may exist in an older SJ and be
   gone in the current one),
