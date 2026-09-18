@@ -1,24 +1,20 @@
 # Project State
 
-Current status as of 2026-09-17 (later session, Bugfix-Serie).
+Current status as of 2026-09-18 (later session, Review-Serie).
 
 ## Current Focus
-Alle 11 Tickets (#2–#12) aus dem Problemezettel abgeschlossen und
-geschlossen — inkl. #11 (Live-Write + vollständiger Revert) und #12
-(alle 5 Unterpunkte; cookies entfernt, Escape-Hatch in DECISIONS.md).
+Tickets #13 (Spec-Drift), #14 (cli-Duplikate) und #15 (Struktur)
+umgesetzt und geschlossen — auf Basis des Vollbaum-Reviews
+(Standards 0 hard/~12 Smells, Spec 4 partiell + 1 Akzeptanz-Bruch #5)
+mit Fixpunkt 5dc4e13. Keine Live-Writes durchgeführt.
 
 ## Completed (this cycle)
-- [x] #9 Doku 302 korrigiert (PITFALLS + CONVENTIONS), 642c6a6
-- [x] #7 batch-set --delay Default 0.5→1.0, 149906b
-- [x] #6 fill-fixed Dry-Run-Default + --no-dry-run, 83c472b
-- [x] #2 recorder.main(argv) + record-Optionen am Subparser, 2a13c8d
-- [x] #4 resolve_schoolyear_id wirft statt falscher Arithmetik (21 vs 24), 787e446
-- [x] #8 Login fail-closed bei fehlendem anonymousMode-Marker, 0080fe1
-- [x] #10 JSON-RPC-Fehler werden ausgelöst (_raise_jsonrpc_error in rpc()/_jsonrpc_web inkl. setSchoolyear), 90c9a22
-- [x] #3 fill nutzt echte dtRange-Zeiten (startIso/endIso in _period_summary) + Gruppierung nach lsId, live verifiziert, 4b6b47a
-- [x] #5 --school-year-id durch students-Befehle in setSchoolyear gethreadet, 63b5c06
-- [x] #11 _build_students_payload (edit-Semantik) für add+edit, 9e88068; live verifiziert: Write auf lsId 215940 (Ziel 0→18/18, attending 24→25), Revert exakt (alle attendedPeriods byte-identisch zum Vorher-Stand)
-- [x] #12 Unterpunkte 1/3/4/5 (chmod-Race os.open 0o600, playwright-Dep raus, fetch_bodies gelöscht, _submit_topic_entries-Helper), 53b56ce; Unterpunkt 2: cookies-Befehl entfernt, Escape-Hatch-Pfad in DECISIONS.md dokumentiert
+- [x] #13 `--school-year-id` vor+nacher Subcommand (SUPPRESS), `fill-fixed --json` im Write-Pfad, egg-info rebuildet (playwright weg, gitignored)
+- [x] #14 Helper extrahiert (`_sleep_between`, `_resolve_topic_id`, `_base_period_fields`, `_finish_students_command`, `_no_open_periods`, Login via `_make_client`); `url_fields`-Entscheidung dokumentiert (nur `batch-set`)
+- [x] #14 Nebenbefund: `batch-check`-Delay-NameError aus der Refactor-Reihenfolge, gefixt + Regressionstest tests/test_absences.py
+- [x] #15 cli-Split in cli_{common,lehrstoff,students,absences,misc} (dünnes cli.py mit Re-Exports), Domain-Typen (`PeriodFields`/`LessonGroup`/`SubmitItem`) per Differenzialtest byte-identisch, Kleinkram (Namen, `Client`-Typen, Chains)
+- [x] #15 bewusst behalten: `element_type`-Param, `get_commit_diff_by_name`, `sy`-Konvention; ARCHITECTURE/CONVENTIONS nachgezogen
+- [x] Tests 25/25 grün (24 bestehend + 1 neu)
 
 ## Pending
 - None.
@@ -27,14 +23,9 @@ geschlossen — inkl. #11 (Live-Write + vollständiger Revert) und #12
 - None.
 
 ## Notes
-- Live-Verifikation offenbart: `setSchoolyear` akzeptiert ungültige
-  Schuljahr-IDs still (kein Fehler) — Server-Verhalten, dokumentiert in #5.
-- dtRange liefert echte ISO start/end je Periode — die frühere
-  +1:50-Heuristik war nie nötig.
-- `rpc`-Passthrough wirft bei Error-Payloads jetzt RuntimeError
-  (Exit ≠ 0) statt Error-JSON auszudrucken.
-- Browser-Cookie-Harvest (Captcha/Lockout-Escape-Hatch): siehe
-  DECISIONS.md 2026-09-17.
+- `git pull --ff-only` scheitert bei dirty tree (rebase-config) — per `git fetch` geprüft: kein Upstream-Vorsprung, kein Konflikt.
+- Malformed batch-items geben `ok: false` statt Crash (`SubmitItem.from_dict`-Guard).
+- `fill`-Write-Pfad (nicht `-fixed`) gibt wie `batch-set` immer JSON — konsistent, kein Handlungsbedarf.
 
 ## Next Session Suggestion
-- Neue Feature-Wünsche nach Bedarf.
+- Nächster Code-Review ab dem Commit dieser Serie (Fixpunkt siehe HANDOFF.md).
