@@ -19,7 +19,12 @@ fill-open-periods workflow with human confirmation.
 | `recorder.py` | CDP-Recorder: attaches to Brave:9222, captures Network + Runtime events to recordings/*.jsonl |
 | `client.py` | WebUntis HTTP client: login, JWT, REST/JSON-RPC endpoints, retry-with-backoff |
 | `gitlog.py` | GRG-* git-log analysis: pull, class folder resolution (split/February), commit diffs |
-| `cli.py` | CLI entry point: `lehrstoff *`, `lessons`, `search`, `students *`, `kv`, `absences *`, `record`, `login`/`logout`, `session status`, `lesson info`, generic `rpc`/`rest` passthrough |
+| `cli.py` | Thin entry point: argparse wiring + `main()`; re-exports everything below for backward compat (`from webuntis_agent.cli import …` keeps working) |
+| `cli_common.py` | Shared CLI infrastructure: env/session/client, `_add_school_year_arg`, `_sleep_between`, period/topic/submit helpers, domain types (`PeriodFields`, `LessonGroup`, `SubmitItem`) |
+| `cli_lehrstoff.py` | `lehrstoff *`, `lessons` |
+| `cli_students.py` | `students *` (+ `_teacher_names_for_class`, `_resolve_lsid_from_class_subject`) |
+| `cli_absences.py` | `absences *` |
+| `cli_misc.py` | `search`, `kv`, `lesson info`, `session status`, generic `rpc`/`rest` passthrough, `record`, `login`/`logout` |
 
 ## CLI Commands
 

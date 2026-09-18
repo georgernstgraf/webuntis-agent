@@ -71,3 +71,9 @@ Superseded decisions are relocated to HISTORY.md.
 - **Reason**: Repo is public; past exposures of student names/IDs accepted as uncritical, but no new person data may be committed. No git-history rewrite.
 - **Considered**: Untracking HANDOFF/STATE entirely; full history rewrite (filter-repo)
 - **Tradeoff**: Old person data remains in git history (accepted); agents must actively route person data to LOCAL.md
+
+## 2026-09-18: cli.py split into cli_* modules, domain dataclasses keep dict wire format
+- **Choice**: `cli.py` thin (argparse wiring + re-exports); logic in `cli_common` (infra + `PeriodFields`/`LessonGroup`/`SubmitItem`), `cli_lehrstoff`, `cli_students`, `cli_absences`, `cli_misc`. Dataclasses convert back to the original dicts (`to_dict`, key order kept) so CLI JSON stays byte-identical (verified by differential test vs HEAD on random data).
+- **Reason**: `cli.py` ~2000 lines Divergent Change (review #15); dict wire format keeps tests/skill contracts stable
+- **Considered**: Big-bang rewrite of outputs to dataclasses; leaving the monolith
+- **Tradeoff**: 5 modules + re-export layer; `from webuntis_agent.cli import …` keeps working (e.g. tests/test_lessons.py unchanged)

@@ -795,8 +795,9 @@ class Client:
             client=self,
         )
         r.raise_for_status()
-        data = r.json()
-        return data["data"]["result"]["data"]["elements"]
+        payload = r.json()
+        result = payload["data"]["result"]
+        return result["data"]["elements"]
 
     # ----- Absences (Absenzenkontrolle) ---------------------------------
 

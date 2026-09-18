@@ -151,7 +151,7 @@ def get_commits_for_class(
 ) -> list[CommitInfo]:
     folders = resolve_class_folders_for_date(class_name, when)
 
-    def _scan(days: int) -> list[CommitInfo]:
+    def _collect_window(days: int) -> list[CommitInfo]:
         start = when - timedelta(days=days)
         end = when + timedelta(days=days)
         found: list[CommitInfo] = []
@@ -167,9 +167,9 @@ def get_commits_for_class(
             ))
         return found
 
-    all_commits = _scan(window_days)
+    all_commits = _collect_window(window_days)
     if not all_commits and fallback_days > window_days:
-        all_commits = _scan(fallback_days)
+        all_commits = _collect_window(fallback_days)
     return all_commits
 
 

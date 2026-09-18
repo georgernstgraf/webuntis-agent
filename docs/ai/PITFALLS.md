@@ -35,6 +35,7 @@ Read this file carefully before making changes in affected areas.
 
 - **UTF-8 in --text arg**: Bash mangles Umlaute ("HÜ" → "HUe") when passing via `--text "..."`. Use `--text-file <path>` or `batch-set --file <json>` instead.
 - **.env key names**: `.env` may use short keys (`user`, `password`) or full keys (`WEBUNTIS_USER`). `_load_env()` maps short→full via aliases dict.
+- **argparse subparser defaults overwrite globals**: a subparser `--school-year-id` with `default=None` wipes a globally given value when the flag is absent after the subcommand. Subparser copies must use `default=argparse.SUPPRESS` so only an explicit flag overwrites.
 
 ## Recorder
 

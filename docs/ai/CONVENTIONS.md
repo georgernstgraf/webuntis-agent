@@ -9,7 +9,7 @@ Follow these without question. Do not deviate unless explicitly told.
 - Recording files: `{timestamp}_{domain_with_underscores}_{type}.jsonl`
 
 ## File Layout
-- `src/webuntis_agent/` — Python package (recorder, client, gitlog, cli)
+- `src/webuntis_agent/` — Python package (recorder, client, gitlog, cli + cli_{common,lehrstoff,students,absences,misc})
 - `scripts/` — shell scripts (brave-debug.sh) and helper scripts (show-cookies.py)
 - `recordings/` — gitignored, contains session cookies and captured traffic
 - `docs/WEBUNTIS_API.md` — authoritative API reference
@@ -28,6 +28,8 @@ Follow these without question. Do not deviate unless explicitly told.
 - Login via `POST /WebUntis/j_spring_security_check` (form-encoded, not JSON); the 302 redirect is NOT a success signal — verify via the `anonymousMode` marker (see `client.login()`, docs/WEBUNTIS_API.md § login)
 - `batch-set` uses `--delay 1.0` (1 second between PUTs) to avoid IP rate-limiting
 - `id: 0` in PUT body creates a new topic; existing `id` updates
+- `--school-year-id` works before AND after the subcommand (subparser copies use `default=SUPPRESS`, subcommand wins on double use)
+- `fill-fixed --json`: JSON with the flag, human-readable lines without — in BOTH dry-run and write paths
 
 ## Git-Log Analysis
 - `get_commits_for_class(class, date, repo_filter=repos)` — always pass `repo_filter` to scope to candidate repos
