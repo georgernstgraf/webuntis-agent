@@ -13,7 +13,7 @@ Open tasks:
 
 Review-Basis für den nächsten Lauf:
 - Domain-CLI-Serie committed als 7f69335 (#17), davor 72c9bc2 (#16).
-- Stundenplan-Serie (diese): uncommitted, Review ab
-  `git diff 7f69335...HEAD` nach dem Commit.
+- Stundenplan-Serie committed als 9d5c30a (#18). Review ab
+  `git diff 7f69335...9d5c30a`.
 
 Last updated: 2026-09-21
