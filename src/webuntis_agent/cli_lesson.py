@@ -940,6 +940,8 @@ def cmd_absenzen_zeigen(args: argparse.Namespace) -> int:
     if args.termin is not None:
         vm_bundle = c.get_classreg_viewmodel(args.termin)
         vm = vm_bundle["viewModel"]
+        lesson_desc = (((vm.get("period") or {}).get("lesson")
+                         or {}).get("text") or "")
         rows = []
         for r in vm.get("absenceRows") or []:
             ab = r.get("absence") or {}
@@ -957,12 +959,14 @@ def cmd_absenzen_zeigen(args: argparse.Namespace) -> int:
             print(json.dumps({
                 "periodId": args.termin,
                 "lessonId": vm.get("lessonId"),
+                "lessonText": lesson_desc,
                 "blockStartTime": vm.get("blockStartTime"),
                 "blockEndTime": vm.get("blockEndTime"),
                 "absenceRows": rows,
             }, indent=2, ensure_ascii=False))
             return 0
-        print(f"Termin {args.termin} (lsId {vm.get('lessonId')}), "
+        desc = f", {lesson_desc}" if lesson_desc else ""
+        print(f"Termin {args.termin} (lsId {vm.get('lessonId')}{desc}), "
               f"Block {vm.get('blockStartTime')}-{vm.get('blockEndTime')}: "
               f"{len(rows)} Abwesenheiten")
         for r in rows:

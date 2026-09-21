@@ -43,6 +43,30 @@ Business rules and domain relationships not obvious from code.
 | SS | Sprech- & Supplierbereitschaft | (none — skip) |
 | BESP | Berufsspezifische Praxis | (none — skip, ask user) |
 
+## POS-Modulstruktur (seit 2026-09-21 bekannt)
+
+POS (Programmieren und Software Engineering) wird in vielen Klassen
+**7 Stunden pro Woche** unterrichtet und ist in zwei Module aufgeteilt:
+
+| Modul | Umfang | Lehrer | GRG repo |
+|---|---|---|---|
+| **Java-Praxis** | 5 h/Woche | andere Lehrer (z.B. EDJ, WES, HOA) | GRG-JAVA — NICHT GRGs Content, keine Lehrstoff-Ableitung möglich |
+| **Theorie** | 2 h/Woche (Block) | GRG | GRG-POSTHEORIE (Folien_WS=Graphen, Folien_SS=theoretische Informatik) |
+
+- **Lektionsbeschreibung** = classregpage-ViewModel
+  `period.lesson.text` (NICHT in der Matrix/lessonSubject!): sie trägt
+  den Modul-Marker — z.B. "Graphentheorie" bzw. "Theorie" für GRGs
+  Lessons. Sichtbar via
+  `lesson K/F absenzen zeigen --termin-id <id>` (Feld `lessonText`).
+- Die **parallelen POS-Gruppen** einer Klasse (`klasse … faecher`,
+  z.B. POS1_…_1/2/3) sind die Modul-/Lehrer-Teilung: GRGs 1 Termin
+  (2-h-Block) ist das Theorie-Modul, die übrigen (3BAIF: EDJ/WES) sind
+  Java-Praxis.
+- **open-periods ist teacher-scoped** → GRGs offene POS-Perioden sind
+  IMMER Theorie-Lessons. Java-Praxis-Inhalte können nicht aus GRGs
+  Repos abgeleitet werden — Repos für eigene POS-Lehrstoffe sind
+  GRG-POSTHEORIE(+T); GRG-JAVA(-T) dient nur fremden Jahren/Lehrern.
+
 ## Lesson Topic Derivation Priority
 
 1. Git folder names with date prefix (e.g. `2025-10-02_cases_click_images/`) — highest confidence

@@ -55,6 +55,17 @@ git history, and submit each via the webuntis-agent CLI.
    - The `proposedText` is a rough starting point — improve it.
    - For block periods (same `lsId`), use the same text — one PUT
      updates the whole block.
+   - **POS lessons are the THEORIE module** (POS = 7 h/week: 5 h
+     Java-Praxis taught by OTHER teachers + 2 h Theorie by GRG).
+     GRG's own POS lessons carry the module marker in the lesson
+     description ("Theorie", "Graphentheorie" — check via
+     `lesson KLASSE/POS1 absenzen zeigen --termin-id <id>`, JSON field
+     `lessonText`). Content source is GRG-POSTHEORIE (Folien_WS =
+     Graphen, Folien_SS = theoretische Informatik — NO per-lesson
+     commits; derive from folien sequence + README + parallel classes).
+     There is NO GRG content for Java-Praxis — never invent it; own
+     open POS periods are always theory lessons (open-periods is
+     teacher-scoped).
 
 3. **Present a confirmation table** to the user:
 

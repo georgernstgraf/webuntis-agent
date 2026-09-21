@@ -239,6 +239,8 @@ def test_cmd_absenzen_entfernen_no_absence_found(monkeypatch, capsys):
 
 def test_cmd_absenzen_zeigen_termin_lists_rows(monkeypatch, capsys):
     fake = _AbsFakeClient()
+    fake.vm["period"] = {"id": 608000, "lesson": {
+        "id": 218000, "text": "Graphentheorie", "subjects": "POS1"}}
     fake.vm["absenceRows"] = [
         {"absence": {"id": 317000, "startTime": 1145, "endTime": 1325,
                      "person": {"id": 21000, "displayName": "Muster Erika"}}}]
@@ -248,8 +250,24 @@ def test_cmd_absenzen_zeigen_termin_lists_rows(monkeypatch, capsys):
                               lsid=None, klasse_fach=None)
     rc = cli_lesson.cmd_absenzen_zeigen(args)
     assert rc == 0
-    payload = json.loads(capsys.readouterr().out)
+    out = capsys.readouterr().out
+    payload = json.loads(out)
     assert payload["periodId"] == 608000
     assert payload["lessonId"] == 218000
+    assert payload["lessonText"] == "Graphentheorie"
     assert payload["absenceRows"][0]["absenceId"] == 317000
     assert payload["absenceRows"][0]["studentName"] == "Muster Erika"
+
+
+def test_cmd_absenzen_zeigen_termin_text_includes_desc(monkeypatch, capsys):
+    fake = _AbsFakeClient()
+    fake.vm["period"] = {"id": 608000, "lesson": {
+        "id": 218000, "text": "Theorie", "subjects": "POS1"}}
+    monkeypatch.setattr(cli_lesson, "_make_client", lambda args: fake)
+    args = argparse.Namespace(termin=608000, nur_fehlende=False,
+                              alle=False, json=False, school_year_id=None,
+                              lsid=None, klasse_fach=None)
+    rc = cli_lesson.cmd_absenzen_zeigen(args)
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "lsId 218000, Theorie)" in out.splitlines()[0]

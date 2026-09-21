@@ -26,7 +26,8 @@ Read this file carefully before making changes in affected areas.
 
 - **Class name case sensitivity**: WebUntis returns UPPERCASE class names (`5AHWII`), but git folders are lowercase (`5ahwii/`). Always `.lower()` before git pathspec.
 - **Folder name `3HWII` vs `3AHWII`**: GRG-SWP has a `3HWII/` folder (next year's planning) that is NOT the same as `3ahwii/` (current year's class). The `3ahwii` SWP content is actually in GRG-CS (C# OOP), not GRG-SWP.
-- **POS-Theorie has no per-lesson commits**: GRG-POSTHEORIE uses PDF folien (Folien_WS/Folien_SS), not dated folders. Derive topics from folien sequence + README + parallel classes.
+- **POS-Theorie has no per-lesson commits**: GRG-POSTHEORIE uses PDF folien (Folien_WS/Folien_SS), not dated folders. Derive topics from folien sequence + README + parallel classes. GRG teaches ONLY the Theorie module of POS (2 h/Woche-Block; Java-Praxis 5 h unterrichten ANDERE Lehrer — dazu gibt es keinen GRG-Content, s. DOMAIN.md § POS-Modulstruktur).
+- **Lektionsbeschreibung steckt NICHT in der Matrix**: `lessonSubject` ist nur der Fach-Name; die Beschreibung (Modul-Marker wie "Graphentheorie") steht im classregpage-ViewModel `period.lesson.text` — via `lesson K/F absenzen zeigen --termin-id <id>` (JSON: `lessonText`) lesbar.
 - **3BAIF POS1 has no repo**: 3baif is not in any GRG-* repo. Derive from parallel classes (4baif, 6acif in GRG-POSTHEORIE) or PDF folien.
 - **February name change boundary**: For dates near February, search BOTH pre- and post-change folder names (e.g. both `3aaif/` and `4aaif/`).
 - **Split class folders**: `5ahwii_X/` and `5ahwii_Y/` — must search all `_X/_Y/_Z` variants, not just `5ahwii/`.
