@@ -96,6 +96,7 @@ Domain-Objekte: **Klasse** (`wu klasse 3AHWII`), **Lesson** als
 ./wu lesson 3AHWII/SWP1x termine --mit-lehrstoff
 ./wu lesson 3AHWII/SWP1x absenzen zeigen
 ./wu student "Erika Muster"           # Klasse, KV, belegte Lessons (ohne Matrix)
+./wu student --id 4711                # derselbe Detail-Zugriff per Schüler-ID
 ./wu student "Erika Muster" --absenzen  # + fehlt/gehalten der eigenen Lessons
 ```
 

@@ -315,13 +315,58 @@ def _print_student_detail(c, sy: int, s: dict,
           f"Stunden gefehlt")
 
 
+def _suchen_per_id(c, current_id: int, student_id: int) -> list[dict]:
+    """Schüler-Direktzugriff per ID (nur aktuelles Roster).
+
+    Liefert eine ein-elementige Trefferliste im selben Format wie
+    `_suchen` (mit `searchNote: id-match`), oder [] wenn die ID nicht
+    im aktuellen Roster steht. Per ID gibt es KEINEN Jahr-Fallback
+    (Textsuche kann keine IDs finden) — dokumentierte Limitation.
+    """
+    try:
+        overview = c.get_students_overview()
+    except Exception as e:
+        raise RuntimeError(f"students/overview fehlgeschlagen ({e})")
+    for s in overview.get("students", []):
+        if s.get("id") == student_id:
+            ci = s.get("classInfo") or {}
+            return [{
+                "id": s.get("id"),
+                "shortName": s.get("shortName", ""),
+                "displayName": s.get("lastName", ""),
+                "firstName": s.get("firstName", ""),
+                "lastName": s.get("lastName", ""),
+                "class": ci.get("name", ""),
+                "classId": ci.get("id"),
+                "schoolYear": {"id": current_id,
+                               "name": c.schoolyear_label(current_id)},
+                "current": True,
+                "searchNote": "id-match",
+            }]
+    return []
+
+
 def cmd_student(args: argparse.Namespace) -> int:
     """Alle Infos zu einem Schüler: Treffer, Klasse, KV, Fächer, Absenzen."""
+    if (args.name is None) == (getattr(args, "student_id", None) is None):
+        print("entweder NAME oder --id angeben (genau eins)",
+              file=sys.stderr)
+        return 2
     c = _make_client(args)
     override = args.school_year_id
     sy = c.resolve_schoolyear_id(override=override)
-    students, current_id, years = _suchen(
-        c, sy, args.name, args.wortteile, args.alle_jahre, override)
+    if getattr(args, "student_id", None) is not None:
+        query: str | int = args.student_id
+        try:
+            students = _suchen_per_id(c, sy, args.student_id)
+        except RuntimeError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        current_id, years = sy, [sy]
+    else:
+        query = args.name
+        students, current_id, years = _suchen(
+            c, sy, args.name, args.wortteile, args.alle_jahre, override)
     if getattr(args, "klasse", None):
         kl = args.klasse.lower()
         students = [s for s in students
@@ -329,7 +374,7 @@ def cmd_student(args: argparse.Namespace) -> int:
                     or (s.get("shortName") or "").lower() == kl]
     if args.json:
         payload: dict = {
-            "query": args.name,
+            "query": query,
             "currentSchoolYear": {"id": current_id,
                                   "name": c.schoolyear_label(current_id)},
             "yearsSearched": years,
@@ -357,11 +402,16 @@ def cmd_student(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0
     if not students:
-        print("(keine Treffer)")
+        if getattr(args, "student_id", None) is not None:
+            print(f"(kein Schüler mit ID {args.student_id} im aktuellen "
+                  "Roster — per ID gibt es keinen Jahr-Fallback, "
+                  "Namenssuche mit --alle-jahre versuchen)")
+        else:
+            print("(keine Treffer)")
         return 0
     current_hits = [s for s in students if s.get("current")]
     old_hits = [s for s in students if not s.get("current")]
-    print(f"{len(students)} Treffer für {args.name!r}:")
+    print(f"{len(students)} Treffer für {query!r}:")
     for s in current_hits:
         name = (f"{s.get('firstName', '')} {s.get('lastName', '')}".strip()
                 or s.get("displayName", ""))

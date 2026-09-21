@@ -38,6 +38,9 @@ Testläufe).
 - [x] Live: klasse 3BAIF faecher (18 Lessons, 3 parallele POS1-Gruppen,
   eigen korrekt), student = POS1+WMC_1 (0 Matrix), --absenzen 2/2+2/2,
   Resolver 3baif/pos1 -> eigene lsId, Absenz-Testläufe, raum rc=3
+- [x] `student --id <ID>` Direktzugriff per Schüler-ID (Alternative zum
+  Namen, `_suchen_per_id` über students/overview, nur aktuelles Roster —
+  kein Jahr-Fallback; genau eins aus NAME/--id, sonst Exit 2) (#19)
 
 ## Pending
 - Live-Absenz-Write-Verifikation (Setzen+Löschen am Testtermin,

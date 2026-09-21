@@ -486,12 +486,19 @@ def main() -> int:
                     "Schüler-Stundenplan (Anwesenheit egal — belegt = "
                     "eingeschrieben). Absenzen nur mit --absenzen (dann "
                     "Matrix-Scans der eigenen Lessons). Treffer aus "
-                    "älteren Jahren sind NICHT AKTUELL markiert.",
+                    "älteren Jahren sind NICHT AKTUELL markiert. Mit --id "
+                    "direkter Zugriff per Schüler-ID statt Namenssuche "
+                    "(nur aktuelles Roster).",
         epilog="Beispiele:\n"
                "  wu student \"Erika Muster\"\n"
+               "  wu student --id 4711\n"
                "  wu student Muster --klasse 5BAIF --absenzen --json",
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    stu.add_argument("name", help="Name, z.B. 'Erika Muster'")
+    stu.add_argument("name", nargs="?", default=None,
+                     help="Name, z.B. 'Erika Muster' (alternativ --id)")
+    stu.add_argument("--id", dest="student_id", type=int, default=None,
+                     help="Schüler-ID direkt (statt Namenssuche; nur "
+                          "aktuelles Roster)")
     stu.add_argument("--klasse", dest="klasse", default=None,
                      help="auf Klasse filtern, z.B. 5BAIF")
     stu.add_argument("--wortteile", dest="wortteile", action="store_true",
