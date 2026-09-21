@@ -1,6 +1,6 @@
 # Architecture
 
-Living structural map of the system as of 2026-09-17.
+Living structural map of the system as of 2026-09-21 (Stundenplan-Serie).
 Overwritten when structural changes occur during a session.
 
 ## Overview
@@ -17,37 +17,51 @@ fill-open-periods workflow with human confirmation.
 | Module | Purpose |
 |--------|---------|
 | `recorder.py` | CDP-Recorder: attaches to Brave:9222, captures Network + Runtime events to recordings/*.jsonl |
-| `client.py` | WebUntis HTTP client: login, JWT, REST/JSON-RPC endpoints, retry-with-backoff |
+| `client.py` | WebUntis HTTP client: login, JWT, REST/JSON-RPC endpoints, retry-with-backoff, Stundenplan-Parser (parse/group, pure), Absenz-Writes |
 | `gitlog.py` | GRG-* git-log analysis: pull, class folder resolution (split/February), commit diffs |
 | `cli.py` | Einstieg: Argparse-Verdrahtung + `main()` (deutsche Hilfe mit Beispielen, KLASSE/FACH-Extraktion, UnknownLessonError-Handler) |
-| `cli_common.py` | Geteilte Infra: Session/Client, Schuljahr-Flag, Period-/Lesson-Gruppierung, Topic-Submit, Such-Formatierung |
-| `cli_klasse.py` | `klasse` (Übersicht/Roster/Fächer/KV) |
-| `cli_lesson.py` | `lesson` (Roster/Matrix/Termine/Info/Teilnehmer/Lehrstoff/Absenzen) |
-| `cli_student.py` | `student` (Suche + Detail: Klasse/KV/Fächer/Absenzen) |
+| `cli_common.py` | Geteilte Infra: Session/Client, Schuljahr-Flag, Klassen-Lookup (`_find_klasse`), Period-/Lesson-Gruppierung, Topic-Submit, Such-Formatierung |
+| `cli_klasse.py` | `klasse` (Übersicht/Roster/Fächer/KV) — Fächer aus Klassen-Stundenplan |
+| `cli_lesson.py` | `lesson` (Roster/Matrix/Termine/Info/Teilnehmer/Lehrstoff/Absenzen zeigen/eintragen/entfernen/pruefen) + Plan-basierter Resolver |
+| `cli_student.py` | `student` (Suche + Detail: Klasse/KV/Lessons aus Plan-Join, Absenzen opt-in) |
 | `cli_offen.py` | `offen` (Arbeitsvorrat: Liste/Status/Verifizieren/Vorschlag/Eintragen/Festtexte/Prüfen) |
 | `cli_suche.py` | `search` (Suche + Detail-Dispatch Student/Lehrer/Klasse) |
+| `cli_raum.py` | `raum` (suchen/groesse — Stubs, Exit 3; Freie-Raum-Suche Folgeissue) |
 | `cli_intern.py` | `intern` (versteckt: login/logout/session/record/rpc/rest) |
 
 ## CLI Commands (deutsch, Stand 2026-09-21; alt→neu s. README)
 
 | Command | Purpose |
 |---------|---------|
-| `klasse KLASSE` | Übersicht: KV, eigene Fächer, Roster |
-| `klasse KLASSE roster\|faecher\|kv` | Teil-Sichten (TSV-Roster, Lesson-Liste, KV) |
+| `klasse KLASSE` | Übersicht: KV, ALLE Lessons der Klasse (Stundenplan, `eigen`-Markierung), Roster |
+| `klasse KLASSE roster\|faecher\|kv` | Teil-Sichten (TSV-Roster, Lesson-Liste mit Primary-Lehrer/Offen-Count, KV) |
 | `lesson KLASSE/FACH` | Roster des Termins zu `--datum` (Standard `heute`) |
 | `lesson K/F matrix\|termine\|info` | Anwesenheits-Matrix, Termine+Offen-Status, Diagnostik |
 | `lesson K/F lehrstoff zeigen\|eintragen\|aus-git` | Lehrstoff je Termin |
-| `lesson K/F absenzen zeigen\|pruefen` | fehlt/gehalten je Schüler; Absenzenprüfung (Write) |
+| `lesson K/F absenzen zeigen [--termin-id]` | fehlt/gehalten je Schüler; mit --termin-id echte Absenz-Einträge |
+| `lesson K/F absenzen eintragen\|entfernen` | Abwesenheit setzen/löschen (Write, Testlauf-Standard) |
+| `lesson K/F absenzen pruefen` | Absenzenprüfung (Write) |
 | `lesson K/F aufnehmen\|anpassen` | Teilnehmer-Writes (Testlauf-Standard) |
-| `student NAME` | Treffer + Detail: Klasse, KV, Fächer, Absenzen |
+| `student NAME [--absenzen]` | Treffer + Detail: Klasse, KV, belegte/nicht belegte Lessons aus Plan-Join (0 Matrix-Calls); --absenzen: eigene Lessons |
 | `offen liste\|status\|verifizieren` | Arbeitsvorrat lesen |
 | `offen vorschlag` | Vorschlag-JSON aus Git-Logs (Skill-Input, schreibt nichts) |
 | `offen eintragen --datei` | bestätigte Lehrstoffe schreiben |
 | `offen festtexte` | SS/BESP-Festtexte (Testlauf-Standard) |
 | `offen pruefen` | Absenzenprüfung über Zeitraum/Datei (Write) |
+| `raum suchen\|groesse` | Stubs (Exit 3) — Endpunkte dokumentiert, Umsetzung geplant |
 | `search TEXT [--detail]` | Suche + Detail-Dispatch |
 | `intern …` | versteckt: login/logout/session/record/rpc/rest |
 
+## Lesson-Enumeration (seit 2026-09-21)
+
+- Quelle: `timetable/entries` (CLASS, 1 Woche ± Ferien-Fallback) —
+  ALLE Lessons; Gruppierung (Klasse, Fach, Primary-Lehrer) für parallele
+  Gruppen (POS1_3BAIF_1/2/3); `eigen` per Slot-Match mit MY_TIMETABLE
+  (eigene Lehrerposition ist dort anonymisiert)
+- lsId nur im Einzelfall: `calendar-entry/detail` → `lesson.lessonId`
+  (= Matrix-lsId, verifiziert); Resolver bevorzugt bei Mehrdeutigkeit
+  die eigene Lesson (Matrix ist rechte-beschränkt)
+- `open-periods` nur noch: Offen-Status, Arbeitsvorrat, Resolver-Fallback
 ## `wu` Wrapper
 
 Bash shortcut (tracked at repo root), symlink-fähig: `readlink -f`

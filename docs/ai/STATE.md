@@ -1,49 +1,62 @@
 # Project State
 
-Current status as of 2026-09-21 (Domain-CLI, harter Schnitt).
+Current status as of 2026-09-21 (Stundenplan-Serie, nach Domain-CLI).
 
 ## Current Focus
-Domain-CLI umgesetzt: `klasse`, `lesson` (KLASSE/FACH), `student`,
-`offen`, `search` (mit --detail-Dispatch), `intern` (versteckt).
-Alte Befehle ersatzlos gestrichen (keine Aliase), UI deutsch,
-JSON-Schlüssel englisch. Tests 45/45 grün. Skill `fill-open-periods`
-auf `offen vorschlag/eintragen/pruefen` migriert.
+Lesson-Enumeration aus dem Stundenplan umgestellt: `klasse faecher`,
+`student` und der Resolver arbeiten primär auf timetable/entries +
+calendar-entry/detail; Absenz-Writes (eintragen/entfernen) und
+`raum`-Stubs angebaut. Tests 65/65 grün. Live verifiziert (lesend +
+Testläufe).
 
 ## Completed (this cycle)
-- [x] CLI-Gerüst: deutsche Hilfe (description + Beispiele je Gruppe),
-  `--schuljahr-id`, `--von/--bis`, `--datum (heute|…)`,
-  `--testlauf/--ausfuehren`, KLASSE/FACH-Extraktion (`_extract_adresse`,
-  s. PITFALLS.md), UnknownLessonError-Text aktualisiert
-- [x] `klasse` (Übersicht: KV + Fächer + Roster), `roster`, `faecher`, `kv`
-- [x] `lesson`: Roster (Default, Zukunfts-Fallback), `matrix`,
-  `termine` (+ `--mit-lehrstoff`), `info`, `lehrstoff zeigen/eintragen/aus-git`,
-  `absenzen zeigen` (fehlt/gehalten, nur gehaltene Termine),
-  `absenzen pruefen` (einzeln/lesson-weit),
-  `aufnehmen`/`anpassen` (Testlauf-Standard)
-- [x] `student`: Suche (Fallback/Alle-Jahre) + Detail (KV, belegt/nicht
-  belegt, Absenzen via Klassen-Matrix-Scan)
-- [x] `offen`: liste/status/verifizieren/vorschlag/eintragen/festtexte/pruefen
-- [x] `search --detail`: Dispatch Student→Detail, Lehrer→Steckbrief +
-  KV-Klassen (Wochenplan fremder Lehrer nicht lesbar, s. PITFALLS.md),
-  Klasse→Übersicht
-- [x] Doku: README (Migrationstabelle), WEBUNTIS_API.md, ARCHITECTURE.md,
-  CONVENTIONS.md, DECISIONS.md (#15-Split → HISTORY.md), PITFALLS.md
-- [x] live verifiziert (Lesen + Testläufe): klasse/lesson-Roster, termine,
-  matrix, info, absenzen zeigen, student-Detail, search-Dispatch,
-  offen liste/status/vorschlag/festtexte, aufnehmen-Testlauf
+- [x] RE: Stundenplan-Endpunkte (entries/grid/filter/calendar,
+  calendar-entry/detail, rooms/form) + Absenz-Write-Workflow
+  (insert/delete/absenceRows/Dialog-CSRF) aus 2 CDP-Recordings
+- [x] Join verifiziert: `lesson.lessonId` == Matrix-lsId (WMC-Block
+  3BAIF); classregpage-ViewModel enthält lessonId + students
+  (absent/absenceId) + absenceRows
+- [x] Client: get_timetable_entries/get_calendar_entry_detail/
+  get_rooms_form + Parser (parse_timetable_entries,
+  group_timetable_lessons: Klasse/Fach/Primary-Lehrer) +
+  parse_dojo_viewmodel + set_absence/delete_absence/
+  get_classreg_viewmodel
+- [x] `student`: Plan-Join (belegt = eingeschrieben, klassenfremde
+  Lessons, 0 Matrix-Calls), `--absenzen` opt-in (nur eigene Lessons
+  via MY_TIMETABLE, da Matrix rechte-beschränkt)
+- [x] `klasse/faecher`: alle Lessons aus Klassen-Plan, `eigen` per
+  Slot-Match, Primary-Anzeige bei parallelen Gruppen, offen-Count
+- [x] Resolver: Plan→Match→Detail→lsId, eigene-Lesson-Bevorzugung bei
+  Mehrdeutigkeit, open-periods-Fallback
+- [x] `absenzen eintragen/entfernen` (Testlauf-Standard, Block-Default,
+  --kein-block nur mit --termin-id), `absenzen zeigen --termin-id`
+  (echte Absenz-Einträge)
+- [x] `raum suchen/groesse` Stubs (Exit 3)
+- [x] Doku: WEBUNTIS_API.md (Schablonen, anonymisiert), PITFALLS,
+  CONVENTIONS (Anonymisierungs-Regel, Doku-Schablonen-Regel),
+  DECISIONS, ARCHITECTURE
+- [x] Live: klasse 3BAIF faecher (18 Lessons, 3 parallele POS1-Gruppen,
+  eigen korrekt), student = POS1+WMC_1 (0 Matrix), --absenzen 2/2+2/2,
+  Resolver 3baif/pos1 -> eigene lsId, Absenz-Testläufe, raum rc=3
 
 ## Pending
-- None.
+- Live-Absenz-Write-Verifikation (Setzen+Löschen am Testtermin,
+  netto null) — wartet auf Nutzer-Go.
 
 ## Blockers
 - None.
 
 ## Notes
-- Matrix-`name` gekürzt, Matrix-Daten int YYYYMMDD (Details: PITFALLS.md).
-- `student`-Detail scannt je Klassen-Lesson eine Matrix (Rate-Limit
-  beachten); klassenfremde Teilnahme nicht enthalten.
-- Resolver-Fenster heute−7/+13 Tage: außerhalb keine `lsId`-Auflösung →
-  `--lsid` direkt.
+- Parallele Gruppen desselben Fachs (POS1_3BAIF_1/2/3): Team-Teilung,
+  Schüler besuchen ggf. alle; E1x/E1y-Gruppenwahl nur eine — Join bildet
+  beides korrekt ab (Primary-Lehrer + Slot-Fakten).
+- MY_TIMETABLE/TEACHER-Plan anonymisiert eigene Lehrerposition →
+  eigen-Markierung per Slot-Match, NICHT per Lehrer.
+- Matrix rechte-beschränkt: fremde lsIds melden Internal server error
+  (wie unbekannte) — UnknownLessonError-Hinweis angepasst.
+- Resolver-Fenster heute−7/+13 bleibt nur als Fallback (Plan primär).
 
 ## Next Session Suggestion
-- Nächster Code-Review ab dem Commit dieser Serie (Fixpunkt siehe HANDOFF.md).
+- Code-Review ab Commit dieser Serie (Fixpunkt s. HANDOFF.md).
+- Folgeissue: `raum suchen` echte Freie-Raum-Suche (Belegung aus
+  ROOM-entries je Slot, capacity-Filter; availability-Semantik offen).

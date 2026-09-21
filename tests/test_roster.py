@@ -198,9 +198,79 @@ def _open_entries():
     ]
 
 
+def _pos(typ, short, long_):
+    return [{"current": {"type": typ, "shortName": short,
+                         "longName": long_}, "removed": None}]
+
+
+def _plan_entry(day, start, end, ids, subject):
+    return {"ids": ids,
+            "duration": {"start": f"{day}T{start}", "end": f"{day}T{end}"},
+            "type": "NORMAL_TEACHING_PERIOD", "status": "REGULAR",
+            "position1": _pos("TEACHER", "MUS", "Musterlehrer"),
+            "position2": _pos("SUBJECT", subject, f"Fach {subject}"),
+            "position3": _pos("ROOM", "A1.01", "Stammklasse"),
+            "position4": None}
+
+
+def _plan_response():
+    # timetable/entries-Response (Woche Mo 2026-09-14..Sa 2026-09-19),
+    # Klassen-Plan: Klasse steht im day.resource, position4 ist null
+    days = {}
+    for day, entries in {
+        "2026-09-15": [_plan_entry("2026-09-15", "08:00", "08:50",
+                                   [101], "PMM1x")],
+        "2026-09-16": [_plan_entry("2026-09-16", "09:55", "10:45",
+                                   [102], "PMM1y")],
+        "2026-09-18": [_plan_entry("2026-09-18", "08:00", "09:40",
+                                   [103, 104], "PMM1y")],
+    }.items():
+        days[day] = {"date": day, "resourceType": "CLASS",
+                     "resource": {"id": 1, "shortName": "4AHWIT",
+                                  "longName": "Fiktive Klasse"},
+                     "status": "REGULAR", "dayEntries": [],
+                     "gridEntries": entries, "backEntries": []}
+    return {"format": 1, "days": [days[d] for d in sorted(days)],
+            "errors": []}
+
+
+_LSID_BY_KEY = {  # (start-datetime) -> lessonId der Fake-Detail-Response
+    "2026-09-15T08:00:00": 215910,
+    "2026-09-16T09:55:00": 215916,
+    "2026-09-18T08:00:00": 215916,
+}
+
+
 class _FakeResolverClient:
+    """Plan-Primärpfad: get_klassen + entries + detail (Fakedaten)."""
+
+    fail_plan = False
+
     def resolve_schoolyear_id(self, override=None):
         return 24
+
+    def get_klassen(self, schoolyear_id=None):
+        if self.fail_plan:
+            raise AttributeError("plan nicht verfügbar")
+        return {"result": [{"id": 1, "name": "4AHWIT",
+                            "longName": "Fiktive Klasse"}]}
+
+    def get_timetable_entries(self, resource_type, resource_id,
+                              start, end, timetable_type="STANDARD",
+                              school_year_id=None):
+        if self.fail_plan:
+            raise AttributeError("plan nicht verfügbar")
+        return _plan_response()
+
+    def get_calendar_entry_detail(self, element_type, element_id,
+                                  start_datetime, end_datetime,
+                                  school_year_id=None):
+        assert element_type == 1 and element_id == 1
+        lsid = _LSID_BY_KEY[start_datetime]
+        return {"calendarEntries": [
+            {"id": 1, "lesson": {"lessonId": lsid, "lessonNumber": 1},
+             "klasses": [{"id": 1, "shortName": "4AHWIT"}],
+             "singleEntries": [{"id": 103}]}]}
 
 
 def test_resolve_lesson_picks_closest_and_warns(monkeypatch, capsys):
@@ -212,6 +282,7 @@ def test_resolve_lesson_picks_closest_and_warns(monkeypatch, capsys):
     assert lesson["lsId"] == 215916
     assert lesson["class"] == "4AHWIT"
     assert lesson["subject"] == "PMM1y"
+    assert lesson["classId"] == 1
     assert lesson["candidates"] == [215910, 215916]
     err = capsys.readouterr().err.splitlines()
     assert err[0] == ("Warnung: mehrdeutige Lesson für 4ahwit/pmm: "
@@ -237,6 +308,19 @@ def test_resolve_lesson_single_no_warning(monkeypatch, capsys):
         _FakeResolverClient(), 24, "4AHWIT", "PMM1x")
     assert lesson["lsId"] == 215910
     assert capsys.readouterr().err == ""
+
+
+def test_resolve_lesson_fallback_open_periods(monkeypatch, capsys):
+    # Plan nicht nutzbar -> Hinweis + Fallback über offene Perioden
+    monkeypatch.setattr(cli_lesson, "_open_period_entries",
+                        lambda c, sy, s, e: _open_entries())
+    fake = _FakeResolverClient()
+    fake.fail_plan = True
+    lesson = cli_lesson._resolve_lesson_from_class_subject(
+        fake, 24, "4AHWIT", "PMM1y", ref_date="2026-09-18")
+    assert lesson["lsId"] == 215916
+    err = capsys.readouterr().err
+    assert "Fallback über offene Perioden" in err
 
 
 def test_cmd_roster_class_subject_prints_exact_label(monkeypatch, capsys):

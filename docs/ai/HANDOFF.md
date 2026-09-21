@@ -1,14 +1,19 @@
 Open tasks:
 
-None.
+- Live-Absenz-Write-Verifikation: `lesson 3BAIF/WMC_1 absenzen
+  eintragen --schueler-name "…" --datum 2026-09-25 --ausfuehren`
+  gefolgt von `absenzen entfernen --absenz-id <id> --termin-id
+  <PERIOD_ID> --ausfuehren` (Setzen+Löschen-Paar, netto null; PERIOD_ID
+  z.B. aus `absenzen zeigen --termin-id`) — nur nach Nutzer-Go
+  ausführen.
+- Serie committen (inkl. Issue-Referenz wie bisher), danach:
+  Folgeissue `raum suchen` (Freie-Raum-Suche: ROOM-entries je Slot +
+  capacity-Filter aus rooms/form; `availability`-Semantik klären —
+  beide aufgenommenen Slots lieferten durchgehend NONE).
 
 Review-Basis für den nächsten Lauf:
-- Vollbaum-Review erledigt auf Stand 5dc4e13; Serien #13–#15
-  umgesetzt in 6c236b3, Feature #16 umgesetzt in 72c9bc2 (main).
-- Domain-CLI-Serie (2026-09-21, harter Schnitt: klasse/lesson/student/
-  offen/search/intern, UI deutsch, Skill + Doku + Tests migriert,
-  alt→neu s. README) — uncommitted, Review ab `git diff 72c9bc2...HEAD`
-  (plus neue Issues seit #16 als Spec-Quelle).
-- Nächster Review-Fixpunkt: Commit dieser Serie.
+- Domain-CLI-Serie committed als 7f69335 (#17), davor 72c9bc2 (#16).
+- Stundenplan-Serie (diese): uncommitted, Review ab
+  `git diff 7f69335...HEAD` nach dem Commit.
 
 Last updated: 2026-09-21

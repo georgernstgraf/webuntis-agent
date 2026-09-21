@@ -5,11 +5,14 @@ Business rules and domain relationships not obvious from code.
 ## Entities
 
 - **Period**: A single school hour (e.g. 13:25–14:15). Has `periodId`, `lsId` (lesson block), `hr` (hour number), `class`, `subject`, `date`, `time`.
-- **Lesson Block (lsId)**: A group of periods forming one continuous lesson (e.g. 13:25+14:25 = 2-period block). One PUT updates ALL periods in the block.
+- **Lesson Block (lsId)**: A group of periods forming one continuous lesson (e.g. 13:25+14:25 = 2-period block). One PUT updates ALL periods in the block. A "Lesson" (Fach in einer Klasse) can MEHRERE lsIds haben — parallele Gruppen (s.u.).
+- **Parallel groups**: Parallele Gruppen desselben Fachs in EINER Klasse (z.B. POS1_3BAIF_1/2/3) sind getrennte lsIds mit eigenem Primary-Lehrer. Zwei Muster: Team-Teilung (alle Schüler besuchen alle Gruppenstunden, Lehrer wechseln sich ab) und Wahl-Gruppen (Schüler besucht genau eine, z.B. E1x/E1y). Der Plan-Join bildet beides korrekt ab; die Matrix ist je lsId rechte-beschränkt (nur eigene lesbar).
 - **Topic**: The Lehrstoff (lesson topic) entry for a period. Has `id` (topicId), `periodId`, `text`, `attachments`. May be `null` (no topic row yet → create with `id: 0`).
+- **Absence Record**: Echte Abwesenheit im Klassenbuch (classregpage), getrennt von der Matrix-Anwesenheit (`attendedPeriods`): hat eigene `absenceId`, Zeiten, `person`, Entschuldigungsstatus; Write via insert/delete-Flow.
 - **Open Period**: A period where the teacher still owes a topic (`topicNeeded=true`) or absence check (`absCheckNeeded=true`). Filter: `TOPIC_OR_ABSENCE_OPEN`.
 - **Teacher**: Identified by `person_id` from JWT. Used as `teacherId` in open-periods query.
 - **Schoolyear**: Has `id`, `name` (e.g. "2025/2026"), `dateRange` ({start, end}). Current schoolyear id derived from date range match.
+- **"belegt" (seit 2026-09-21)**: eingeschrieben = Fach erscheint im Schüler-Stundenplan — Anwesenheit ist KEIN Teil der Definition (immer kranke Schüler bleiben belegt).
 
 ## GRG-* Repository Structure
 

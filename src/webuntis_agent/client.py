@@ -39,9 +39,11 @@ class UnknownLessonError(RuntimeError):
         super().__init__(
             f"lsId {lsid} gibt es im Schuljahr {schoolyear_label} "
             f"(id {schoolyear_id}) nicht "
-            "(Server meldet: Internal server error). "
-            "Gültige lsIds z.B. via 'wu klasse <KLASSE> faecher' oder "
-            "'wu offen liste --von <von> --bis <bis>'."
+            "(Server meldet: Internal server error — Hinweis: die Matrix "
+            "ist rechte-beschränkt, fremde Lessons sind nicht lesbar). "
+            "Gültige eigene lsIds z.B. via "
+            "'wu offen liste --von <von> --bis <bis>' oder "
+            "'wu student <Name> --absenzen --json'."
         )
 
 
@@ -104,6 +106,164 @@ FIXED_TEXT_SUBJECTS: dict[str, str] = {
     "SS": "Sprechstunde",
     "BESP": "Bewegung und Sport",
 }
+
+
+def _untis_date_to_iso(d: int | str) -> str:
+    """Untis-Datum (int YYYYMMDD) -> ISO "YYYY-MM-DD"."""
+    s = str(d)
+    return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+
+
+def _untis_time_to_hhmm(t: int | str) -> str:
+    """Untis-Zeit (int HHMM, z.B. 1145 oder 900) -> "HH:MM"."""
+    n = int(t)
+    return f"{n // 100:02d}:{n % 100:02d}"
+
+
+def parse_timetable_entries(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """timetable/entries-Response -> flache Entry-Liste (reine Funktion).
+
+    Ein Entry = ein grid/day-Block eines Tages: Termindaten, Perioden-IDs
+    (`ids`), Fach, Klasse, Lehrer (Kürzel), Räume. Die Positions-Felder
+    sind NICHT fest numeriert (position1..7 je nach resourceType anders
+    belegt) — klassifiziert wird über das `type`-Feld jedes Elements.
+    Beim Klassen-Plan trägt `position4` keine Klasse (sie steht im
+    day.resource); der Fallback greift darauf zurück.
+    """
+    out: list[dict[str, Any]] = []
+    for day in data.get("days", []):
+        d_date = day.get("date")
+        day_res = day.get("resource") or {}
+        day_is_class = day.get("resourceType") == "CLASS"
+        for section in ("dayEntries", "gridEntries", "backEntries"):
+            for e in day.get(section) or []:
+                teachers: list[str] = []
+                teacher_longs: list[str] = []
+                subject = subject_long = None
+                rooms: list[str] = []
+                klass = klass_long = None
+                for n in range(1, 8):
+                    for p in (e.get(f"position{n}") or []):
+                        cur = p.get("current")
+                        if not cur:
+                            continue
+                        typ = cur.get("type")
+                        short = cur.get("shortName") or ""
+                        if typ == "TEACHER":
+                            if short and short not in teachers:
+                                teachers.append(short)
+                            ln = cur.get("longName") or ""
+                            if ln and ln not in teacher_longs:
+                                teacher_longs.append(ln)
+                        elif typ == "SUBJECT" and subject is None:
+                            subject = short
+                            subject_long = cur.get("longName")
+                        elif typ == "ROOM" and short and short not in rooms:
+                            rooms.append(short)
+                        elif typ == "CLASS" and klass is None:
+                            klass = short
+                            klass_long = cur.get("longName")
+                if klass is None and day_is_class:
+                    klass = day_res.get("shortName")
+                    klass_long = day_res.get("longName")
+                dur = e.get("duration") or {}
+                out.append({
+                    "date": d_date,
+                    "start": dur.get("start"),
+                    "end": dur.get("end"),
+                    "periodIds": list(e.get("ids") or []),
+                    "subject": subject,
+                    "subjectLong": subject_long,
+                    "class": klass,
+                    "classLong": klass_long,
+                    "teachers": teachers,
+                    "teacherLongs": teacher_longs,
+                    "rooms": rooms,
+                    "status": e.get("status"),
+                    "type": e.get("type"),
+                })
+    return out
+
+
+def group_timetable_lessons(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Entries nach (Klasse, Fach, Primary-Lehrer) gruppieren (reine Fkt.).
+
+    Eine Lesson (Fach in einer Klasse, s. DOMAIN.md) erscheint in einer
+    Wochenplan-Response mehrfach (je Termin). Parallele Gruppen desselben
+    Fachs (z.B. POS1_3BAIF_1/2/3, verschiedene lsIds + Lehrer) MÜSSEN
+    getrennt bleiben; Ko-Lehrer-/Vertretungs-Variation innerhalb EINER
+    Lesson (EDJ vs. EDJ+WES) darf NICHT splitten. Daher: Cluster nach
+    (class, subject), darin Gruppen nach Primary-Lehrer — ein Entry
+    gehört zur Gruppe, deren Primary in seinem Lehrer-Set steht (neue
+    Gruppe mit seinem ersten Lehrer, falls keine passt). Ein Detail-Call
+    pro Gruppe bestätigt die lsId (Gruppen mit gleichem Primary sind
+    eine Lesson). `primaryTeacher` wird gesetzt; `parallel` markiert
+    Fach-Kürzel mit mehreren Gruppen (für die Anzeige).
+    """
+    clusters: dict[tuple, list[dict[str, Any]]] = {}
+    for e in entries:
+        if not e.get("subject"):
+            continue
+        key = ((e.get("class") or "").lower(), (e["subject"] or "").lower())
+        clusters.setdefault(key, []).append(e)
+    out: list[dict[str, Any]] = []
+    for (cls_l, subj_l), es in clusters.items():
+        es_sorted = sorted(es, key=lambda e: (e.get("date") or "",
+                                              e.get("start") or ""))
+        prim_groups: list[dict[str, Any]] = []
+        for e in es_sorted:
+            teachers = [t for t in (e.get("teachers") or []) if t]
+            g = next((g for g in prim_groups
+                      if g["primary"] is not None and g["primary"] in teachers
+                      or (g["primary"] is None and not teachers)), None)
+            if g is None:
+                g = {"primary": teachers[0] if teachers else None,
+                     "entries": []}
+                prim_groups.append(g)
+            g["entries"].append(e)
+        for g in prim_groups:
+            first = g["entries"][0]
+            lesson = {
+                "subject": first.get("subject"),
+                "subjectLong": first.get("subjectLong"),
+                "class": first.get("class"), "classLong": first.get("classLong"),
+                "primaryTeacher": g["primary"],
+                "parallel": len(prim_groups) > 1,
+                "teachers": [], "teacherLongs": [], "rooms": [],
+                "entries": g["entries"],
+            }
+            for e in g["entries"]:
+                for t in e.get("teachers") or []:
+                    if t and t not in lesson["teachers"]:
+                        lesson["teachers"].append(t)
+                for t in e.get("teacherLongs") or []:
+                    if t and t not in lesson["teacherLongs"]:
+                        lesson["teacherLongs"].append(t)
+                for r in e.get("rooms") or []:
+                    if r and r not in lesson["rooms"]:
+                        lesson["rooms"].append(r)
+            lesson["dates"] = sorted({e.get("date") for e in g["entries"]
+                                      if e.get("date")})
+            out.append(lesson)
+    out.sort(key=lambda g: (g["subject"] or "", g["primaryTeacher"] or ""))
+    return out
+
+
+def parse_dojo_viewmodel(html_text: str) -> dict[str, Any]:
+    """ViewModel-JSON aus einem .do-HTML (data-dojo-props, HTML-escaped).
+
+    Erst html.unescape, dann JSON ab `viewModel: ` per raw_decode (liest
+    genau ein Objekt — robust gegen folgendes Markup).
+    """
+    import html as _html
+    txt = _html.unescape(html_text)
+    m = re.search(r"viewModel: ", txt)
+    if not m:
+        raise RuntimeError("viewModel nicht gefunden (Layoutänderung?)")
+    vm, _ = json.JSONDecoder().raw_decode(txt[m.end():])
+    if not isinstance(vm, dict):
+        raise RuntimeError("viewModel ist kein JSON-Objekt")
+    return vm
 
 
 def tokenize_search_query(query: str) -> list[str]:
@@ -822,6 +982,94 @@ class Client:
         result = payload["data"]["result"]
         return result["data"]["elements"]
 
+    # ----- Timetable (Stundenpläne) -------------------------------------
+
+    def get_timetable_entries(
+        self, resource_type: str, resource_id: int | None,
+        start: str, end: str, timetable_type: str = "STANDARD",
+        school_year_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Stundenplan einer Ressource (GET timetable/entries, lesend).
+
+        resource_type: TEACHER | CLASS | STUDENT | ROOM.
+        resource_id: None -> `resources=` leer (nur fuer OVERVIEW_*).
+        start/end: YYYY-MM-DD (ueblich: Montag..Samstag einer Woche).
+        timetable_type: STANDARD | MY_TIMETABLE | OVERVIEW_DAY |
+        OVERVIEW_WEEK. MY_TIMETABLE + TEACHER = "Mein Stundenplan".
+        Response per parse_timetable_entries() flach parsen; die Entries
+        tragen KEINE lsId — die liefert get_calendar_entry_detail().
+        """
+        if school_year_id is None:
+            school_year_id = self.resolve_schoolyear_id()
+        r = _request_with_retry(
+            self.http, "GET",
+            f"{self.host}/WebUntis/api/rest/view/v1/timetable/entries",
+            params={
+                "start": start, "end": end, "format": 1,
+                "resourceType": resource_type,
+                "resources": resource_id if resource_id is not None else "",
+                "periodTypes": "", "timetableType": timetable_type,
+                "layout": "START_TIME",
+            },
+            headers=lambda: self._rest_headers(
+                school_year_id=school_year_id),
+            client=self,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def get_calendar_entry_detail(
+        self, element_type: int, element_id: int,
+        start_datetime: str, end_datetime: str,
+        school_year_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Detail eines Stundenplan-Blocks (GET v2 calendar-entry/detail).
+
+        element_type: 1 = CLASS, 2 = TEACHER (elementId entsprechend).
+        start/end_datetime: ISO mit Sekunden ("YYYY-MM-DDTHH:MM:SS"),
+        Zeitraum des Blocks aus timetable/entries (duration). Liefert
+        calendarEntries[0].lesson.lessonId == Matrix-lsId (verifiziert),
+        mainStudentGroup, klasses, rooms und singleEntries (Perioden).
+        """
+        if school_year_id is None:
+            school_year_id = self.resolve_schoolyear_id()
+        r = _request_with_retry(
+            self.http, "GET",
+            f"{self.host}/WebUntis/api/rest/view/v2/calendar-entry/detail",
+            params={
+                "elementId": element_id, "elementType": element_type,
+                "startDateTime": start_datetime, "endDateTime": end_datetime,
+            },
+            headers=lambda: self._rest_headers(
+                school_year_id=school_year_id),
+            client=self,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def get_rooms_form(self, start_datetime: str, end_datetime: str,
+                       school_year_id: int | None = None) -> dict[str, Any]:
+        """Raum-Stamm mit Kapazitaet fuer einen Zeitraum (lesend).
+
+        GET calendar-entry/rooms/form -> {buildings, departments,
+        roomTypes, rooms[]}. rooms[]: {id, shortName, longName,
+        capacity, building, roomType, hasTimetable, availability}
+        (availability-Semantik noch offen, s. docs/WEBUNTIS_API.md).
+        """
+        if school_year_id is None:
+            school_year_id = self.resolve_schoolyear_id()
+        r = _request_with_retry(
+            self.http, "GET",
+            f"{self.host}/WebUntis/api/rest/view/v1/calendar-entry/rooms/form",
+            params={"startDateTime": start_datetime,
+                    "endDateTime": end_datetime},
+            headers=lambda: self._rest_headers(
+                school_year_id=school_year_id),
+            client=self,
+        )
+        r.raise_for_status()
+        return r.json()
+
     # ----- Absences (Absenzenkontrolle) ---------------------------------
 
     def get_csrf_token(self, period_id: int) -> str:
@@ -868,6 +1116,154 @@ class Client:
                 "request.preventCache": str(ts),
                 "absencechecked": "absencechecked",
                 "reload": "0",
+                "_csrf": csrf,
+            },
+            headers=lambda: {
+                "Cookie": self.session.cookie_header,
+                "X-CSRF-TOKEN": csrf,
+                "X-Requested-With": "XMLHttpRequest",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            client=self,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def get_classreg_viewmodel(self, period_id: int,
+                               block: bool = True) -> dict[str, Any]:
+        """classregpage.do-ViewModel eines Termins laden (lesend).
+
+        GET classregpage.do?ttid=..&isBlockSelected=.. -> HTML mit
+        (HTML-escapedem) viewModel-JSON + _csrf. Das viewModel enthaelt
+        u.a. `lessonId` (= Matrix-lsId), `students[]` (Klassenliste mit
+        `absent`, `absenceId` je Schueler), `absenceRows` (bestehende
+        Abwesenheiten mit id/Zeiten/person), blockStartTime/EndTime.
+        Liefert {"viewModel", "csrf"}.
+        """
+        ts = int(time.time() * 1000)
+        r = _request_with_retry(
+            self.http, "GET",
+            f"{self.host}/WebUntis/classregpage.do",
+            params={
+                "ttid": period_id,
+                "isBlockSelected": "true" if block else "false",
+                "request.preventCache": ts,
+            },
+            headers=lambda: {
+                "Cookie": self.session.cookie_header,
+                "X-Requested-With": "XMLHttpRequest",
+            },
+            client=self,
+        )
+        r.raise_for_status()
+        m = re.search(r'name="_csrf"\s+value="([^"]+)"', r.text)
+        if not m:
+            raise RuntimeError(
+                f"could not extract _csrf from classregpage.do "
+                f"for period {period_id}"
+            )
+        return {"viewModel": parse_dojo_viewmodel(r.text), "csrf": m.group(1)}
+
+    def set_absence(self, period_id: int, student_id: int,
+                    block: bool = True) -> dict[str, Any]:
+        """Schueler fuer einen Termin abwesend setzen (WRITE).
+
+        POST classregpage.do mit insert=insert&selId=<studentId>&ttid=..
+        (isBlockSelected=true markiert den ganzen Block). Response:
+        args[0].absenceRows enthaelt die NEUE Absenz (id, Zeiten,
+        person) — die Absenz-ID wird fuer das Entfernen gebraucht.
+        """
+        bundle = self.get_classreg_viewmodel(period_id, block=block)
+        csrf = bundle["csrf"]
+        ts = int(time.time() * 1000)
+        r = _request_with_retry(
+            self.http, "POST",
+            f"{self.host}/WebUntis/classregpage.do",
+            params={"request.preventCache": ts},
+            data={
+                "ttid": str(period_id),
+                "isBlockSelected": "true" if block else "false",
+                "request.preventCache": str(ts),
+                "insert": "insert",
+                "selId": str(student_id),
+                "reload": "0",
+                "_csrf": csrf,
+            },
+            headers=lambda: {
+                "Cookie": self.session.cookie_header,
+                "X-CSRF-TOKEN": csrf,
+                "X-Requested-With": "XMLHttpRequest",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            client=self,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def delete_absence(self, absence: dict[str, Any],
+                       period_id: int) -> dict[str, Any]:
+        """Bestehende Abwesenheit entfernen (WRITE, zwei Requests).
+
+        `absence` ist eine Zeile aus get_classreg_viewmodel()
+        (viewModel.absenceRows[].absence) oder der set_absence()-Response:
+        {id, startTime, endTime, startDate, endDate} (Untis-Ints).
+        Schritt 1: GET absencedlg.do (liefert ein FRISCHES _csrf — der
+        POST muss genau dieses tragen). Schritt 2: POST absencedlg.do
+        mit delete=delete. Response: {"_data": {"removedAbsenceIds":
+        [...]}, "success": true}.
+        """
+        absence_id = absence.get("id")
+        if absence_id is None:
+            raise RuntimeError("absence row ohne id")
+        start_time = int(absence.get("startTime") or 0)
+        end_time = int(absence.get("endTime") or 0)
+        start_date = _untis_date_to_iso(absence.get("startDate")
+                                        or absence.get("endDate") or 0)
+        end_date = _untis_date_to_iso(absence.get("endDate")
+                                      or absence.get("startDate") or 0)
+        ts = int(time.time() * 1000)
+        dlg = _request_with_retry(
+            self.http, "GET",
+            f"{self.host}/WebUntis/absencedlg.do",
+            params={
+                "selId": absence_id,
+                "abTimetableId": period_id,
+                "abStartTime": start_time,
+                "abEndTime": end_time,
+                "request.preventCache": ts,
+            },
+            headers=lambda: {
+                "Cookie": self.session.cookie_header,
+                "X-Requested-With": "XMLHttpRequest",
+            },
+            client=self,
+        )
+        dlg.raise_for_status()
+        m = re.search(r'name="_csrf"\s+value="([^"]+)"', dlg.text)
+        if not m:
+            raise RuntimeError(
+                f"could not extract _csrf from absencedlg.do "
+                f"for absence {absence_id}"
+            )
+        csrf = m.group(1)
+        r = _request_with_retry(
+            self.http, "POST",
+            f"{self.host}/WebUntis/absencedlg.do",
+            params={"request.preventCache": ts},
+            data={
+                "selId": str(absence_id),
+                "abTimetableId": str(period_id),
+                "abStartTime": str(start_time),
+                "abEndTime": str(end_time),
+                "request.preventCache": str(ts),
+                "delete": "delete",
+                "startDate": start_date,
+                "endDate": end_date,
+                "startTime": f"T{_untis_time_to_hhmm(start_time)}",
+                "endTime": f"T{_untis_time_to_hhmm(end_time)}",
+                "absenceReason": "-1",
+                "text": "",
+                "_reportedToParent": "on",
                 "_csrf": csrf,
             },
             headers=lambda: {

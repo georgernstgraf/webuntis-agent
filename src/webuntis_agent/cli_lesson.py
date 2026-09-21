@@ -11,10 +11,13 @@ import argparse
 import json
 import sys
 
+from datetime import date, timedelta as _timedelta
+
 from typing import TYPE_CHECKING
 
 from webuntis_agent.cli_common import (
     _datum_arg,
+    _find_klasse,
     _make_client,
     _open_period_entries,
     _read_text_arg,
@@ -101,17 +104,181 @@ def _nearest_date(dates: list[str], ref_date: str) -> str:
                                      d))
 
 
+def _week_bounds(d: date) -> tuple[str, str]:
+    """Montag..Samstag der Woche von d als (start, end) ISO-Daten."""
+    monday = d - _timedelta(days=d.weekday())
+    saturday = monday + _timedelta(days=5)
+    return monday.isoformat(), saturday.isoformat()
+
+
+def _fetch_class_plan(c: Client, class_id: int,
+                      ref: date) -> tuple[list[dict], tuple[str, str]]:
+    """Klassen-Stundenplan der Woche um ref laden (Ferien-Fallback).
+
+    Eine Lesson läuft übers ganze Semester — eine beliebige Schulwoche
+    genügt zur Enumeration. Bei leeren Wochen (Ferien/unterrichtsfrei)
+    werden bis zu 4 benachbarte Wochen (zurück, dann vor) probiert.
+    Liefert (Entries via parse_timetable_entries, genutzte Woche).
+    """
+    from webuntis_agent.client import parse_timetable_entries
+    last: tuple[str, str] | None = None
+    for off in (0, -7, 7, -14):
+        ws, we = _week_bounds(ref + _timedelta(days=off))
+        last = (ws, we)
+        data = c.get_timetable_entries("CLASS", class_id, ws, we)
+        entries = parse_timetable_entries(data)
+        if entries:
+            return entries, (ws, we)
+    return [], (last or _week_bounds(ref))
+
+
+def _entry_dt(entry: dict, key: str) -> str | None:
+    """duration.start/end ("YYYY-MM-DDTHH:MM") -> ISO mit Sekunden."""
+    v = entry.get(key)
+    if not v:
+        return None
+    return v if len(v) > 16 else v + ":00"
+
+
+def _lsid_from_detail(c: Client, class_id: int,
+                      entry: dict) -> int:
+    """lsId eines Plan-Entries via calendar-entry/detail (1 Call).
+
+    lesson.lessonId der Response ist die Matrix-lsId (verifiziert,
+    s. docs/WEBUNTIS_API.md). Wirft RuntimeError bei leerer Response.
+    """
+    detail = c.get_calendar_entry_detail(
+        1, class_id, _entry_dt(entry, "start"), _entry_dt(entry, "end"))
+    ces = detail.get("calendarEntries") or []
+    if not ces:
+        raise RuntimeError(
+            f"calendar-entry/detail leer für {entry.get('date')} "
+            f"{entry.get('start')}")
+    lesson = ces[0].get("lesson") or {}
+    lsid = lesson.get("lessonId")
+    if lsid is None:
+        raise RuntimeError(
+            f"calendar-entry/detail ohne lessonId für "
+            f"{entry.get('date')} {entry.get('start')}")
+    return int(lsid)
+
+
+def _subject_matches(subj: str | None, needle: str) -> bool:
+    """Fach-Match: exakt (case-insensitiv) oder Präfix in eine Richtung."""
+    if not subj:
+        return False
+    s = subj.lower()
+    n = needle.lower()
+    return s == n or s.startswith(n) or n.startswith(s)
+
+
 def _resolve_lesson_from_class_subject(
         c: Client, sy: int, class_name: str, subject: str,
         ref_date: str | None = None) -> dict:
     """Lesson eines (Klasse, Fach)-Paares finden, Trefferdetails liefern.
 
-    Sucht in einem Fenster um heute (7 Tage zurück, 13 voraus).
-    Groß-/Kleinschreibung egal; Fach fällt auf Präfix-Match zurück.
-    Liefert `{"lsId", "class", "subject", "dates", "candidates"}` mit den
-    exakten Untis-Bezeichnungen. Bei mehreren Treffern wird der nächste zu
-    `ref_date` (Standard: heute) gewählt und eine Warnung nach stderr
-    geschrieben; ohne Treffer RuntimeError mit Kandidaten.
+    Primärquelle ist der KLASSEN-STUNDENPLAN (eine Woche um ref_date,
+    Ferien-Fallback) — er enthält ALLE Lessons der Klasse, auch schon
+    erledigte (anders als open-periods). Die lsId kommt per einzelnem
+    calendar-entry/detail-Call. Fällt der Plan aus (Klasse/API), greift
+    das alte Fenster über offene Perioden (heute−7/+13) zurück.
+    Liefert `{"lsId", "class", "classId", "subject", "dates",
+    "periodIds", "entry", "candidates"}`. Bei mehreren Treffern wird
+    der nächste zu ref_date gewählt und nach stderr gewarnt; ohne
+    Treffer RuntimeError mit Kandidaten.
+    """
+    from datetime import date as _date
+    from webuntis_agent.client import (
+        group_timetable_lessons,
+        parse_timetable_entries,
+    )
+    ref = ref_date or _date.today().isoformat()
+    ref_d = _date.fromisoformat(ref)
+
+    def closest_entry(g: dict) -> dict:
+        return min(g["entries"], key=lambda e: (
+            abs((_date.fromisoformat(e.get("date") or ref) - ref_d).days),
+            e.get("start") or ""))
+
+    try:
+        k = _find_klasse(c, sy, class_name)
+        class_id = int(k["id"])
+        entries, week = _fetch_class_plan(c, class_id, ref_d)
+        matches = [e for e in entries
+                   if _subject_matches(e.get("subject"), subject)]
+        if not matches:
+            raise RuntimeError(
+                f"kein Fach '{subject}' im Klassen-Stundenplan "
+                f"{week[0]}..{week[1]} der Klasse {k.get('name')}")
+        groups = group_timetable_lessons(matches)
+        resolved: list[tuple[int, dict]] = []
+        for g in groups:
+            resolved.append(
+                (_lsid_from_detail(c, class_id, closest_entry(g)), g))
+        if len(resolved) > 1:
+            picked = None
+            note = ""
+            # Eigene Lesson bevorzugen: die Matrix ist rechte-beschränkt
+            # (fremde lsIds melden Internal server error), und der
+            # Aufrufer meint mit KLASSE/FACH i.d.R. seine eigene Gruppe.
+            try:
+                my = parse_timetable_entries(c.get_timetable_entries(
+                    "TEACHER", c.teacher_id, week[0], week[1],
+                    timetable_type="MY_TIMETABLE"))
+                my_slots = {(e.get("date"), (e.get("start") or "")[:16])
+                            for e in my if e.get("subject")}
+                mine = [(lsid, g) for lsid, g in resolved
+                        if any((e.get("date"),
+                                (e.get("start") or "")[:16]) in my_slots
+                               for e in g["entries"])]
+                if len(mine) == 1:
+                    picked = mine[0][0]
+                    note = " (eigene Lesson)"
+            except Exception:
+                pass
+            if picked is None:
+                picked = _pick_closest_lesson(
+                    {lsid: g["dates"] for lsid, g in resolved}, ref)
+                reason = f"nächste zu {ref}"
+            else:
+                reason = "eigene Lesson"
+            print(f"Warnung: mehrdeutige Lesson für {class_name}/{subject}: "
+                  f"{len(resolved)} Kandidaten, gewählt lsId={picked} "
+                  f"({reason})", file=sys.stderr)
+            for lsid, g in sorted(resolved):
+                primary = (f" [{g['primaryTeacher']}]"
+                           if g.get("parallel") and g.get("primaryTeacher")
+                           else "")
+                own = " (eigen)" if note and lsid == picked else ""
+                print(f"{k.get('name')}/{g['subject']}{primary} "
+                      f"({_nearest_date(g['dates'], ref)}){own}",
+                      file=sys.stderr)
+        else:
+            picked = resolved[0][0]
+        chosen_lsid, chosen = next((lsid, g) for lsid, g in resolved
+                                   if lsid == picked)
+        rep = closest_entry(chosen)
+        return {"lsId": chosen_lsid, "class": k.get("name"),
+                "classId": class_id, "subject": chosen["subject"],
+                "dates": chosen["dates"],
+                "periodIds": list(rep.get("periodIds") or []),
+                "entry": rep,
+                "candidates": sorted(lsid for lsid, _ in resolved)}
+    except Exception as e:
+        print(f"Hinweis: Klassen-Stundenplan nicht nutzbar ({e}) — "
+              "Fallback über offene Perioden (heute−7/+13, nur offene "
+              "Lessons)", file=sys.stderr)
+    return _resolve_lesson_from_open_periods(
+        c, sy, class_name, subject, ref_date=ref_date)
+
+
+def _resolve_lesson_from_open_periods(
+        c: Client, sy: int, class_name: str, subject: str,
+        ref_date: str | None = None) -> dict:
+    """Fallback-Resolver über offene Perioden (nur OFFENE Lessons).
+
+    Alte Primärlogik (bis 2026-09-21): Fenster heute−7/+13 über
+    open-periods — erledigte Lessons fehlen dort (s. PITFALLS.md).
     """
     from datetime import date as _date, timedelta as _timedelta
     ref = ref_date or _date.today().isoformat()
@@ -125,9 +292,7 @@ def _resolve_lesson_from_class_subject(
         if (e["class"] or "").lower() != cls_l:
             continue
         subj = e["subject"] or ""
-        if not (subj.lower() == subj_l
-                or subj.lower().startswith(subj_l)
-                or subj_l.startswith(subj.lower())):
+        if not _subject_matches(subj, subject):
             continue
         if e["lsId"] is not None:
             m = matches.setdefault(e["lsId"], {"dates": [], "units": []})
@@ -138,9 +303,10 @@ def _resolve_lesson_from_class_subject(
                         for e in entries})
         hints = ", ".join(f"{a}/{b}" for a, b in avail if a.lower() == cls_l)
         raise RuntimeError(
-            f"keine Lesson für {class_name}/{subject} in "
-            f"{start}..{end}" + (f"; verfügbar für {class_name}: {hints}"
-                                 if hints else ""))
+            f"keine Lesson für {class_name}/{subject} (weder "
+            f"Klassen-Stundenplan noch offene Perioden "
+            f"{start}..{end})" + (f"; verfügbar für {class_name}: {hints}"
+                                  if hints else ""))
     if len(matches) > 1:
         picked = _pick_closest_lesson(
             {lsid: m["dates"] for lsid, m in matches.items()}, ref)
@@ -150,21 +316,17 @@ def _resolve_lesson_from_class_subject(
         for lsid in sorted(matches):
             m = matches[lsid]
             units = sorted({(u[1], u[2]) for u in m["units"]})
-            # eine Zeile je Kandidat: exakte Untis-Bezeichnung + Termin
-            # (nächster zu ref; alle Termine einer Lesson teilen sich
-            # Klasse/Fach, bei gemischten Daten gewinnt der erste)
             klass, subj = units[0]
             print(f"{klass}/{subj} "
                   f"({_nearest_date(m['dates'], ref)})", file=sys.stderr)
     else:
         picked = next(iter(matches))
     m = matches[picked]
-    # Label: bevorzugt der Eintrag auf ref_date (exakte Untis-Bezeichnung
-    # des gewünschten Termins), sonst der erste Eintrag der Lesson
     label_unit = next((u for u in m["units"] if u[0] == ref), m["units"][0])
     return {"lsId": picked, "class": label_unit[1],
-            "subject": label_unit[2],
+            "classId": None, "subject": label_unit[2],
             "dates": sorted(set(m["dates"])),
+            "periodIds": [], "entry": None,
             "candidates": sorted(matches)}
 
 
@@ -764,15 +926,50 @@ def cmd_lehrstoff_aus_git(args: argparse.Namespace) -> int:
 
 
 def cmd_absenzen_zeigen(args: argparse.Namespace) -> int:
-    """Grobe Absenz-Zusammenfassung je Schüler: fehlende vs. gehaltene Stunden.
+    """Absenzen einer Lesson zeigen: je Schüler oder je Termin.
 
-    Gezählt werden nur Termine bis einschließlich heute — zukünftige
-    Termine fließen nicht ein. Grundlage ist die Anwesenheits-Matrix
-    (Anwesenheit je Termin), keine separaten Absenz-Records.
+    Ohne --termin-id: grobe Zusammenfassung je Schüler aus der Matrix
+    (fehlende vs. gehaltene Stunden, nur bis heute). Mit --termin-id:
+    die ECHTEN Abwesenheits-Einträge dieses Termins aus dem
+    Klassenbuch (classregpage-ViewModel: lessonId, abwesende Schüler
+    mit Absenz-ID — Basis für `absenzen entfernen --absenz-id`).
     Nur lesend.
     """
     from datetime import date as _date
     c = _make_client(args)
+    if args.termin is not None:
+        vm_bundle = c.get_classreg_viewmodel(args.termin)
+        vm = vm_bundle["viewModel"]
+        rows = []
+        for r in vm.get("absenceRows") or []:
+            ab = r.get("absence") or {}
+            person = ab.get("person") or {}
+            rows.append({
+                "absenceId": ab.get("id"),
+                "studentId": person.get("id"),
+                "studentName": person.get("displayName"),
+                "startTime": ab.get("startTime"),
+                "endTime": ab.get("endTime"),
+                "startDate": ab.get("startDate"),
+                "endDate": ab.get("endDate"),
+            })
+        if args.json:
+            print(json.dumps({
+                "periodId": args.termin,
+                "lessonId": vm.get("lessonId"),
+                "blockStartTime": vm.get("blockStartTime"),
+                "blockEndTime": vm.get("blockEndTime"),
+                "absenceRows": rows,
+            }, indent=2, ensure_ascii=False))
+            return 0
+        print(f"Termin {args.termin} (lsId {vm.get('lessonId')}), "
+              f"Block {vm.get('blockStartTime')}-{vm.get('blockEndTime')}: "
+              f"{len(rows)} Abwesenheiten")
+        for r in rows:
+            zeit = (f"{r['startTime']}-{r['endTime']}"
+                    if r.get("startTime") is not None else "?")
+            print(f"  id={r['absenceId']:>8}  {r['studentName']}  {zeit}")
+        return 0
     lsid, lesson_label = _resolve_lsid(c, args)
     result = c.get_student_lesson_period_matrix(
         lsid, school_year_id=args.school_year_id)["result"]
@@ -810,6 +1007,194 @@ def cmd_absenzen_zeigen(args: argparse.Namespace) -> int:
         print(f"  {r['id']:>6}  {r['name']:32} "
               f"anwesend {r['anwesend']}/{r['gehalten']}  "
               f"fehlt {r['fehlt']}")
+    return 0
+
+
+def _resolve_schueler(c: Client, args: argparse.Namespace) -> dict | None:
+    """Schüler über --schueler-id oder --schueler-name eindeutig auflösen.
+
+    Namenssuche via students/overview (volle Namen, tokenisierend);
+    bei Mehrdeutigkeit Kandidaten nach stderr + None. Kein Matrix-Call.
+    """
+    from webuntis_agent.client import (
+        student_matches_overview,
+        tokenize_search_query,
+    )
+    if args.schueler_id is not None:
+        try:
+            overview = c.get_students_overview()
+        except Exception as e:
+            print(f"students/overview fehlgeschlagen ({e})", file=sys.stderr)
+            return None
+        for s in overview.get("students", []):
+            if s.get("id") == args.schueler_id:
+                ci = s.get("classInfo") or {}
+                return {"id": s.get("id"),
+                        "name": f"{s.get('lastName', '')} "
+                                f"{s.get('firstName', '')}".strip(),
+                        "class": ci.get("name", "")}
+        print(f"Schüler-ID {args.schueler_id} nicht im aktuellen Roster",
+              file=sys.stderr)
+        return None
+    if not args.schueler_name:
+        print("entweder --schueler-id oder --schueler-name angeben",
+              file=sys.stderr)
+        return None
+    tokens = tokenize_search_query(args.schueler_name)
+    try:
+        overview = c.get_students_overview()
+    except Exception as e:
+        print(f"students/overview fehlgeschlagen ({e})", file=sys.stderr)
+        return None
+    hits = []
+    for s in overview.get("students", []):
+        if student_matches_overview(s, tokens):
+            ci = s.get("classInfo") or {}
+            hits.append({"id": s.get("id"),
+                         "name": f"{s.get('lastName', '')} "
+                                 f"{s.get('firstName', '')}".strip(),
+                         "class": ci.get("name", "")})
+    if len(hits) != 1:
+        for h in hits:
+            print(f"  Kandidat: id={h['id']} {h['name']} "
+                  f"Klasse={h['class']}", file=sys.stderr)
+        print(f"Schülername '{args.schueler_name}' trifft {len(hits)} "
+              "Schüler; --schueler-id verwenden", file=sys.stderr)
+        return None
+    return hits[0]
+
+
+def _termin_und_block(c: Client, args: argparse.Namespace,
+                      sy: int) -> tuple[int, bool] | None:
+    """Termin (ttid) + Block-Flag für Absenz-Befehle auflösen.
+
+    --termin-id direkt; sonst --datum (Standard heute) über den
+    KLASSE/FACH-Resolver: der Entry am Tag ( sonst nächster Zukunfts-,
+    sonst letzter Termin) liefert die erste Perioden-ID des Blocks.
+    Block ist Standard (--kein-block nur mit --termin-id sinnvoll).
+    Liefert None nach Fehlermeldung (Aufrufer beendet mit 2).
+    """
+    block = not getattr(args, "kein_block", False)
+    if args.termin is not None:
+        return args.termin, block
+    if not block:
+        print("--kein-block braucht --termin-id (welche Einzelstunde "
+              "am Tag ist sonst nicht eindeutig)", file=sys.stderr)
+        return None
+    day = _datum_arg(getattr(args, "datum", "heute"))
+    klasse, fach = _split_klasse_fach(args.klasse_fach)
+    try:
+        lesson = _resolve_lesson_from_class_subject(
+            c, sy, klasse, fach, ref_date=day)
+    except RuntimeError as e:
+        print(str(e), file=sys.stderr)
+        return None
+    entry = lesson.get("entry")
+    if not entry or not entry.get("periodIds"):
+        print("kein Termin-Entry mit Perioden-IDs auflösbar — "
+              "--termin-id verwenden", file=sys.stderr)
+        return None
+    if entry.get("date") != day:
+        print(f"Hinweis: kein Termin am {day}, verwende "
+              f"{entry.get('date')} ({entry.get('start')})", file=sys.stderr)
+    return int(entry["periodIds"][0]), block
+
+
+def cmd_absenzen_eintragen(args: argparse.Namespace) -> int:
+    """Schüler für einen Lesson-Termin abwesend eintragen (Write).
+
+    --termin-id oder --datum (Standard heute, KLASSE/FACH-Resolver);
+    Block-Standard (ganzer Stundenblock wie in der UI, --kein-block für
+    eine Einzelstunde mit --termin-id). --testlauf (Standard) zeigt nur.
+    Die Response enthält die neue Absenz-ID (für `entfernen`).
+    """
+    c = _make_client(args)
+    sy = c.resolve_schoolyear_id(override=args.school_year_id)
+    schueler = _resolve_schueler(c, args)
+    if schueler is None:
+        return 2
+    resolved = _termin_und_block(c, args, sy)
+    if resolved is None:
+        return 2
+    ttid, block = resolved
+    summary = {"student": schueler, "periodId": ttid, "block": block}
+    if args.testlauf:
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
+        print(f"\nTESTLAUF: {schueler['name']} (id={schueler['id']}) würde "
+              f"für Termin {ttid} "
+              f"({'Block' if block else 'Einzelstunde'}) abwesend "
+              "eingetragen. Abschicken mit --ausfuehren.", file=sys.stderr)
+        return 0
+    res = c.set_absence(ttid, schueler["id"], block=block)
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    rows = (res.get("args") or [{}])[0].get("absenceRows") or []
+    ids = [r.get("absence", {}).get("id") for r in rows
+           if r.get("absence", {}).get("id") is not None]
+    if ids:
+        print(f"Abwesenheit eingetragen (Absenz-ID "
+              f"{', '.join(str(i) for i in ids)})", file=sys.stderr)
+    return 0
+
+
+def cmd_absenzen_entfernen(args: argparse.Namespace) -> int:
+    """Bestehende Abwesenheit entfernen (Write, Dialog-CSRF-Flow).
+
+    Ziel: --absenz-id (aus `absenzen zeigen --termin-id`) oder
+    --schueler-id/--schueler-name + Termin. Der Termin (--termin-id
+    oder --datum) liefert den Kontext für das classregpage-ViewModel,
+    dessen absenceRows die zu löschende Absenz (inkl. Zeiten) tragen.
+    --testlauf (Standard) zeigt nur.
+    """
+    c = _make_client(args)
+    sy = c.resolve_schoolyear_id(override=args.school_year_id)
+    resolved = _termin_und_block(c, args, sy)
+    if resolved is None:
+        return 2
+    ttid, _block = resolved
+    schueler = None
+    if args.absenz_id is None:
+        schueler = _resolve_schueler(c, args)
+        if schueler is None:
+            return 2
+    vm = c.get_classreg_viewmodel(ttid)["viewModel"]
+    rows = vm.get("absenceRows") or []
+    row = None
+    if args.absenz_id is not None:
+        row = next((r for r in rows
+                    if (r.get("absence") or {}).get("id")
+                    == args.absenz_id), None)
+        if row is None:
+            print(f"Absenz-ID {args.absenz_id} nicht gefunden am Termin "
+                  f"{ttid} (`absenzen zeigen --termin-id {ttid}` prüfen)",
+                  file=sys.stderr)
+            return 2
+    else:
+        assert schueler is not None
+        row = next((r for r in rows
+                    if ((r.get("absence") or {}).get("person") or {})
+                    .get("id") == schueler["id"]), None)
+        if row is None:
+            print(f"Keine Abwesenheit für {schueler['name']} "
+                  f"(id={schueler['id']}) am Termin {ttid} gefunden.",
+                  file=sys.stderr)
+            return 2
+    ab = row.get("absence") or {}
+    summary = {"absenceId": ab.get("id"),
+               "student": ((ab.get("person") or {}).get("displayName")),
+               "periodId": ttid,
+               "startTime": ab.get("startTime"),
+               "endTime": ab.get("endTime")}
+    if args.testlauf:
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
+        print(f"\nTESTLAUF: Abwesenheit {summary['absenceId']} würde "
+              "entfernt. Abschicken mit --ausfuehren.", file=sys.stderr)
+        return 0
+    res = c.delete_absence(ab, ttid)
+    print(json.dumps(res, indent=2, ensure_ascii=False))
+    removed = ((res.get("_data") or {}).get("removedAbsenceIds") or [])
+    if removed:
+        print(f"Abwesenheit entfernt (Absenz-ID "
+              f"{', '.join(str(i) for i in removed)})", file=sys.stderr)
     return 0
 
 

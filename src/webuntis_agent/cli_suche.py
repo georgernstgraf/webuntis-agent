@@ -105,8 +105,7 @@ def _dispatch(c, sy: int, args: argparse.Namespace,
 def _dispatch_student(c, sy: int, args: argparse.Namespace,
                       hit: dict, res: dict) -> int:
     """Student-Treffer → dieselbe Ausgabe wie `student` (Detail)."""
-    from webuntis_agent.cli_student import _faecher_und_absenzen
-    from webuntis_agent.cli_klasse import _kv_info
+    from webuntis_agent.cli_student import _print_student_detail
     sid = res.get("id")
     overview = {}
     try:
@@ -121,34 +120,11 @@ def _dispatch_student(c, sy: int, args: argparse.Namespace,
               "(nur Treffer aus älteren Schuljahren) — keine Detaildaten.",
               file=sys.stderr)
         return 0
-    name = f"{s.get('firstName', '')} {s.get('lastName', '')}".strip()
     ci = s.get("classInfo") or {}
-    klass = ci.get("name", "")
-    print(f"\n--- {name} (id={sid}), Klasse {klass} ---")
-    try:
-        kv = _kv_info(c, sy, klass)
-        for tid, tname in kv["teachers"].items():
-            print(f"  KV: {tname}")
-    except RuntimeError as e:
-        print(f"  KV: ({e})")
-    try:
-        fa = _faecher_und_absenzen(c, sy, sid, klass)
-    except RuntimeError as e:
-        print(f"  Fächer: ({e})")
-        return 0
-    print("  Belegte Fächer:")
-    for e in fa["belegt"]:
-        print(f"    {e['subject']:8} anwesend "
-              f"{e['termineAnwesend']}/{e['termineGehalten']}  "
-              f"fehlt {e['termineFehlt']}")
-    if fa["nichtBelegt"]:
-        print("  Nicht belegte Fächer:")
-        for e in fa["nichtBelegt"]:
-            print(f"    {e['subject']:8} ({e['termineGehalten']} "
-                  f"gehaltene Termine)")
-    g = fa["absenzenGesamt"]
-    print(f"  Absenzen gesamt: {g['fehlt']} von {g['gehalten']} "
-          f"gehaltenen Stunden gefehlt")
+    treffer = {"id": sid, "firstName": s.get("firstName", ""),
+               "lastName": s.get("lastName", ""),
+               "class": ci.get("name", "")}
+    _print_student_detail(c, sy, treffer)
     return 0
 
 

@@ -94,6 +94,63 @@ Superseded decisions are relocated to HISTORY.md.
 - **Scope**: UI (Hilfe, Meldungen, Befehls-/Optionsnamen) deutsch;
   JSON-Keys bleiben englisch (Skill-Parsing), interner Code englisch
 
+## 2026-09-21: Lesson-Enumeration aus dem Stundenplan (nicht open-periods)
+- **Choice**: `klasse … faecher`, `student` und der `lesson KLASSE/FACH`-
+  Resolver enumerieren Lessons primär aus dem KLASSEN-STUNDENPLAN
+  (`GET rest/view/v1/timetable/entries`, resourceType=CLASS, eine Woche
+  um das Referenzdatum mit Nachbarwochen-Fallback). lsId nur im
+  Einzelfall per `GET v2/calendar-entry/detail` (`lesson.lessonId` =
+  Matrix-lsId, verifiziert). `open-periods` bleibt nur für Offen-Status,
+  Arbeitsvorrat (`offen …`) und als Resolver-FALLBACK (heute−7/+13),
+  wenn der Plan nicht ladbar ist. `student` ohne Matrix-Call
+  (2 Plan-Calls, Join Klasse×Schüler), Absenzen opt-in via
+  `--absenzen` (nur EIGENE Lessons via MY_TIMETABLE, da die Matrix
+  rechte-beschränkt ist); `belegt` = eingeschrieben (Fach im
+  Schüler-Plan), Anwesenheit irrelevant. Parallele Gruppen desselben
+  Fachs (POS1_3BAIF_1/2/3) werden per Primary-Lehrer getrennt, eigene
+  Lessons per Slot-Match markiert (MY_TIMETABLE anonymisiert die
+  eigene Lehrerposition).
+- **Reason**: open-periods kennt nur OPEN-Filter — erledigte Lessons
+  fehlten (WMC_1 verschwand aus `student`, Unterzählung der Absenzen);
+  10–12 Matrix-Calls pro Schüler wurden vom Nutzer explizit abgelehnt.
+- **Considered**: open-periods-Enumeration belassen (abgelehnt — lückig),
+  lsId-Spalten in Listen (abgelehnt — 10–12 Detail-Calls), Voll-Scan
+  über Matrizen (abgelehnt)
+- **Tradeoff**: Stundenplan-Quelle braucht 2–3 leichte Calls statt 1
+  open-periods-Call; Ferien-Fenster-Fallback nötig
+
+## 2026-09-21: Absenz-Write-Workflow (setzen/löschen) an der Lesson
+- **Choice**: `lesson K/F absenzen eintragen|entfernen` (Testlauf-Standard,
+  Block-Standard, `--kein-block` nur mit --termin-id) implementieren;
+  `absenzen zeigen --termin-id` listet echte Absenz-Einträge
+  (classregpage-ViewModel) als Discovery. `raum suchen|groesse` nur als
+  verdrahtete Stubs (Exit 3) — Endpunkte (rooms/form mit capacity,
+  ROOM-entries) sind dokumentiert, echte Freie-Raum-Suche ist
+  Folgeissue.
+- **Reason**: Nutzer-Anforderung nach dem CDP-Recording (Setzen/Löschen
+  einer Abwesenheit wurde manuell aufgezeichnet und reverse-engineered);
+  Raumsuche explizit Zukunftsmusik, aber Vokabular soll reserviert sein.
+- **Considered**: Absenz-Write unter `student` (abgelehnt — Abwesenheit
+  ist (Schüler × Termin einer Lesson), gehört zur Lesson-Adresse);
+  Raumbefehle ganz weglassen (abgelehnt — Nutzer will CLI-Nutzen später)
+- **Tradeoff**: zwei .do-CSRF-Flows (classregpage + absencedlg mit
+  frischem Token pro GET) — dokumentiert und getestet
+
+## 2026-09-21: Doku anonymisiert — Platzhalter-IDs, keine echten Werte
+- **Choice**: API-Referenz (WEBUNTIS_API.md) mit Schablone je Endpunkt;
+  Beispiele NUR mit Platzhaltern (`CLASS_ID`, `STUDENT_ID`, `LESSON_ID`,
+  `PERIOD_ID`, `ABSENCE_ID`, `ROOM_ID`) bzw. offenkundig fiktiven Namen
+  (Erika Musterfrau, 5XZY) — KEINE echten IDs mehr in neuen
+  Dokumentations-Abschnitten (alt-committede lsId/classId-Beispiele
+  bleiben unverändert stehen). Hinweis, dass Live-IDs per CLI in
+  Sekunden erhältlich sind.
+- **Reason**: Nutzer-Vorgabe („keine echten IDs und keine echten
+  Personennamen, weil das verboten ist"); lsIds/classIds sind zwar laut
+  CONVENTIONS erlaubt, die strengere Regel gewinnt.
+- **Considered**: echte IDs weiterhin erlauben (abgelehnt)
+- **Tradeoff**: Beispiele sind nicht 1:1 reproduzierbar — Weg zu
+  Live-IDs ist je dokumentiert
+
 ## 2026-09-18: roster falls back to nearest unit and labels the effective date
 - **Choice**: `lesson roster` with no unit on the requested date lists the nearest upcoming unit (else last held) instead of erroring; the stdout header then carries the effective date (`3AAIF/WMC_1 (2026-09-22)`), `--json` reports `date` + `requestedDate`
 - **Reason**: User always wants a class list (attendance check happens anyway); a mislabeled list would be worse than a substituted one, hence the visible date + stderr note

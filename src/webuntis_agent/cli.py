@@ -28,6 +28,8 @@ from webuntis_agent.cli_common import (
     _datum_arg,
 )
 from webuntis_agent.cli_lesson import (
+    cmd_absenzen_eintragen,
+    cmd_absenzen_entfernen,
     cmd_absenzen_pruefen,
     cmd_absenzen_zeigen,
     cmd_lehrstoff_aus_git,
@@ -49,6 +51,7 @@ from webuntis_agent.cli_offen import (
     cmd_offen_verifizieren,
     cmd_offen_vorschlag,
 )
+from webuntis_agent.cli_raum import cmd_raum_groesse, cmd_raum_suchen
 from webuntis_agent.cli_student import cmd_student
 from webuntis_agent.cli_suche import cmd_search
 from webuntis_agent.client import UnknownLessonError
@@ -80,8 +83,8 @@ def _add_json(sp):
 _LESSON_VALUE_OPTS = frozenset({
     "--lsid", "--datum", "--klassen-id", "--schueler-id", "--schueler-name",
     "--aufnehmen-id", "--entfernen-id", "--termin-id", "--thema-id",
-    "--text", "--text-datei", "--ausgabe", "--von", "--bis", "--pause",
-    "--datei", "--schuljahr-id",
+    "--absenz-id", "--text", "--text-datei", "--ausgabe", "--von", "--bis",
+    "--pause", "--datei", "--schuljahr-id",
 })
 
 
@@ -374,22 +377,91 @@ def main() -> int:
     _add_school_year_arg(les_lehr_git)
     les_lehr_git.set_defaults(func=cmd_lehrstoff_aus_git)
     les_abs = les_sub.add_parser(
-        "absenzen", help="Absenzen der Lesson: Übersicht/Prüfung",
-        description="Grobe Absenz-Zusammenfassung je Schüler (fehlende vs. "
-                    "gehaltene Stunden, nur bis heute) oder Absenzenprüfung "
-                    "durchführen (Write).")
+        "absenzen", help="Absenzen der Lesson: Übersicht/Eintrag/Entfernung",
+        description="Absenzen-Sicht der Lesson: Übersicht je Schüler "
+                    "(Matrix, nur bis heute), ECHTE Abwesenheits-Einträge "
+                    "eines Termins (mit --termin-id), Abwesenheit "
+                    "eintragen/entfernen (Writes, Testlauf-Standard) oder "
+                    "Absenzenprüfung durchführen (Write).")
     les_abs_sub = les_abs.add_subparsers(dest="sub2", required=True)
     les_abs_zeigen = les_abs_sub.add_parser(
-        "zeigen", help="fehlende vs. gehaltene Stunden je Schüler")
+        "zeigen", help="fehlende vs. gehaltene Stunden je Schüler "
+                       "oder Abwesenheiten eines Termins")
     les_abs_zeigen.add_argument("--nur-fehlende", dest="nur_fehlende",
                                 action="store_true",
                                 help="nur Schüler mit Fehlstunden")
     les_abs_zeigen.add_argument("--alle", action="store_true",
                                 help="alle Schüler der Matrix zeigen "
                                      "(auch nie Anwesende)")
+    les_abs_zeigen.add_argument("--termin-id", dest="termin", type=int,
+                                default=None,
+                                help="statt Matrix: echte Abwesenheits-"
+                                     "Einträge dieses Termins aus dem "
+                                     "Klassenbuch (mit Absenz-IDs)")
     _add_json(les_abs_zeigen)
     _add_school_year_arg(les_abs_zeigen)
     les_abs_zeigen.set_defaults(func=cmd_absenzen_zeigen)
+    les_abs_eintragen = les_abs_sub.add_parser(
+        "eintragen", help="Schüler abwesend eintragen (Write)",
+        description="Abwesenheit für einen Schüler setzen. Termin: "
+                    "--termin-id oder --datum (Standard heute, via "
+                    "KLASSE/FACH). Block-Standard (ganzer Stundenblock "
+                    "wie in der UI); --kein-block für eine Einzelstunde "
+                    "(braucht --termin-id). --testlauf (Standard) "
+                    "schreibt NICHT.")
+    les_abs_eintragen.add_argument("--schueler-id", dest="schueler_id",
+                                   type=int, default=None,
+                                   help="Schüler-ID (alternativ "
+                                        "--schueler-name)")
+    les_abs_eintragen.add_argument("--schueler-name", dest="schueler_name",
+                                   default=None,
+                                   help="Namenssuche (braucht genau 1 "
+                                        "Treffer, volle Namen)")
+    les_abs_eintragen.add_argument("--termin-id", dest="termin", type=int,
+                                   default=None,
+                                   help="Termin-ID (periodId), sonst "
+                                        "--datum")
+    les_abs_eintragen.add_argument("--datum", dest="datum", type=_datum_arg,
+                                   default=argparse.SUPPRESS,
+                                   help="Termin-Tag: JJJJ-MM-TT oder "
+                                        "'heute'")
+    les_abs_eintragen.add_argument("--kein-block", dest="kein_block",
+                                   action="store_true",
+                                   help="nur diese Einzelstunde "
+                                        "(braucht --termin-id)")
+    _add_testlauf(les_abs_eintragen)
+    _add_school_year_arg(les_abs_eintragen)
+    les_abs_eintragen.set_defaults(func=cmd_absenzen_eintragen)
+    les_abs_entfernen = les_abs_sub.add_parser(
+        "entfernen", help="Abwesenheit entfernen (Write)",
+        description="Bestehende Abwesenheit löschen (Dialog-CSRF-Flow). "
+                    "Ziel: --absenz-id (aus `absenzen zeigen --termin-id`) "
+                    "oder --schueler-id/--schueler-name plus Termin "
+                    "(--termin-id oder --datum). --testlauf (Standard) "
+                    "schreibt NICHT.")
+    les_abs_entfernen.add_argument("--absenz-id", dest="absenz_id", type=int,
+                                   default=None,
+                                   help="Absenz-ID (direkt, aus "
+                                        "`absenzen zeigen --termin-id`)")
+    les_abs_entfernen.add_argument("--schueler-id", dest="schueler_id",
+                                   type=int, default=None,
+                                   help="Schüler-ID (alternativ "
+                                        "--schueler-name)")
+    les_abs_entfernen.add_argument("--schueler-name", dest="schueler_name",
+                                   default=None,
+                                   help="Namenssuche (braucht genau 1 "
+                                        "Treffer)")
+    les_abs_entfernen.add_argument("--termin-id", dest="termin", type=int,
+                                   default=None,
+                                   help="Termin-ID (periodId), sonst "
+                                        "--datum")
+    les_abs_entfernen.add_argument("--datum", dest="datum", type=_datum_arg,
+                                   default=argparse.SUPPRESS,
+                                   help="Termin-Tag: JJJJ-MM-TT oder "
+                                        "'heute'")
+    _add_testlauf(les_abs_entfernen)
+    _add_school_year_arg(les_abs_entfernen)
+    les_abs_entfernen.set_defaults(func=cmd_absenzen_entfernen)
     les_abs_pruefen = les_abs_sub.add_parser(
         "pruefen", help="Absenzenprüfung durchführen (Write)",
         description="Mit --termin-id: genau dieser Termin. Ohne: alle "
@@ -409,12 +481,15 @@ def main() -> int:
     stu = sub.add_parser(
         "student", help="Schüler: Treffer, Klasse, KV, Fächer, Absenzen",
         description="Alles zu einem Schüler: Suche (tokenisierend, mit "
-                    "Fallback in ältere Schuljahre), Klasse, Klassenvorstand, "
-                    "belegte/nicht belegte Fächer und Absenz-Übersicht. "
-                    "Treffer aus älteren Jahren sind NICHT AKTUELL markiert.",
+                    "Fallback in ältere Schuljahre), Klasse, Klassenvorstand "
+                    "und belegte/nicht belegte Lessons aus dem "
+                    "Schüler-Stundenplan (Anwesenheit egal — belegt = "
+                    "eingeschrieben). Absenzen nur mit --absenzen (dann "
+                    "Matrix-Scans der eigenen Lessons). Treffer aus "
+                    "älteren Jahren sind NICHT AKTUELL markiert.",
         epilog="Beispiele:\n"
                "  wu student \"Erika Muster\"\n"
-               "  wu student Muster --klasse 5BAIF --json",
+               "  wu student Muster --klasse 5BAIF --absenzen --json",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     stu.add_argument("name", help="Name, z.B. 'Erika Muster'")
     stu.add_argument("--klasse", dest="klasse", default=None,
@@ -424,6 +499,13 @@ def main() -> int:
     stu.add_argument("--alle-jahre", dest="alle_jahre", action="store_true",
                      help="zusätzlich ältere Schuljahre durchsuchen "
                           "(NICHT AKTUELL markiert)")
+    stu.add_argument("--absenzen", dest="absenzen", action="store_true",
+                     help="zusätzlich Absenzen der EIGENEN Lessons der "
+                          "Klasse anzeigen (je Lesson Matrix-Call, "
+                          "gedrosselt)")
+    stu.add_argument("--pause", dest="pause", type=float, default=1.0,
+                     help="Sekunden zwischen Matrix-Calls (Standard 1.0, "
+                          "nur --absenzen)")
     _add_json(stu)
     _add_school_year_arg(stu)
     stu.set_defaults(func=cmd_student)
@@ -508,9 +590,50 @@ def main() -> int:
     _add_school_year_arg(off_pruefen)
     off_pruefen.set_defaults(func=cmd_offen_pruefen)
 
+    # -- raum --
+    rau = sub.add_parser(
+        "raum", help="Räume: suchen/groesse (vorbereitet, noch Stubs)",
+        description="Raum-Sichten. Die nötigen Endpunkte sind reverse-"
+                    "engineered und dokumentiert (Raum-Stundenplan + "
+                    "Raumverzeichnis mit Sitzplätzen), die Befehle sind "
+                    "noch nicht implementiert (Exit 3) und reservieren "
+                    "das CLI-Vokabular für die geplante Freie-Raum-Suche.",
+        epilog="Beispiele (geplante Semantik):\n"
+               "  wu raum suchen --datum morgen --stunde 7 --max-plaetze 20\n"
+               "  wu raum suchen --datum 2026-09-25 --stunde 7 --min-plaetze 36\n"
+               "  wu raum groesse B3.07",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    rau_sub = rau.add_subparsers(dest="sub", required=True)
+    rau_suchen = rau_sub.add_parser(
+        "suchen", help="freien Raum für eine Stunde suchen (noch Stub)")
+    rau_suchen.add_argument("--datum", dest="datum", type=_datum_arg,
+                            default="heute",
+                            help="Tag: JJJJ-MM-TT oder 'heute'/'morgen' "
+                                 "(geplant)")
+    rau_suchen.add_argument("--stunde", dest="stunde", type=int, default=None,
+                            help="Schulstunde (1-11, laut Stundengitter; "
+                                 "geplant)")
+    rau_suchen.add_argument("--min-plaetze", dest="min_plaetze", type=int,
+                            default=None,
+                            help="mindestens so viele Sitzplätze (geplant)")
+    rau_suchen.add_argument("--max-plaetze", dest="max_plaetze", type=int,
+                            default=None,
+                            help="höchstens so viele Sitzplätze (geplant)")
+    rau_suchen.add_argument("--nur-freie", dest="nur_freie",
+                            action="store_true",
+                            help="belegte Räume ausblenden (geplant)")
+    _add_json(rau_suchen)
+    _add_school_year_arg(rau_suchen)
+    rau_suchen.set_defaults(func=cmd_raum_suchen)
+    rau_groesse = rau_sub.add_parser(
+        "groesse", help="Sitzplätze eines Raums (noch Stub)")
+    rau_groesse.add_argument("raum", help="Raum-Kürzel, z.B. B3.07")
+    _add_json(rau_groesse)
+    _add_school_year_arg(rau_groesse)
+    rau_groesse.set_defaults(func=cmd_raum_groesse)
+
     # -- search --
-    sea = sub.add_parser(
-        "search", help="Klassen/Lehrer/Schüler suchen (mit --detail)",
+    sea = sub.add_parser(        "search", help="Klassen/Lehrer/Schüler suchen (mit --detail)",
         description="Textsuche über Klassen, Lehrer und Schüler (volle Namen "
                     "inklusive). Mit --detail und genau einem Treffer öffnet "
                     "sich die Detail-Sicht: Schüler → Student-Detail, Lehrer "

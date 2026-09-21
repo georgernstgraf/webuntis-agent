@@ -49,7 +49,33 @@ Read this file carefully before making changes in affected areas.
 - **CSRF token required**: The absence-check POST needs a `_csrf` token that must be fetched per-period from `GET classregpage.do` (HTML hidden field). Cannot be reused across periods.
 - **No JWT for absences**: The `classregpage.do` endpoint uses session cookie + CSRF, not Bearer JWT. Different from the lesson-topic REST endpoints.
 - **Block partner auto-marked**: One POST marks both periods in the block (response contains `args:[[periodId, blockPartnerId]]`).
-- **X-CSRF-TOKEN header + _csrf body**: Both must carry the same token value. Missing either one causes a 403.
+- **X-CSRF-TOKEN header + _csrf body**: Both must carry a valid token. Live observation (2026-09-21): the header may carry a session-level token while the body carries the per-GET token — replaying the per-GET token in BOTH places works (proven by `check_absences`).
+- **absencedlg CSRF is per-GET FRESH**: two consecutive `GET absencedlg.do` calls return DIFFERENT `_csrf` values; the delete POST must carry exactly the token of the immediately preceding dialog GET.
+- **Zwei selId-Namensräume**: `classregpage.do insert=insert&selId=` trägt die SCHÜLER-ID, `absencedlg.do selId=` die ABSenz-ID. Nie vermischen.
+- **Absenz-Record ≠ Matrix-Anwesenheit**: Eine eingetragene Abwesenheit (classregpage) ändert `attendedPeriods` (Matrix) NICHT — zwei getrennte Systeme.
+- **delete_absence braucht die Zeiten**: Der POST verlangt `abStartTime/abEndTime/startDate/endDate/startTime/endTime` aus der absenceRow (Ints HHMM/YYYYMMDD) — ohne Zeilen-Lookup (viewModel.absenceRows) ist keine Löschung möglich.
+- **Open-only-Falle (historisch, 2026-09-21 gefixt)**: `open-periods`
+  kennt nur `TOPIC_OR_ABSENCE_OPEN/ABSENCE_OPEN/TOPIC_OPEN` — erledigte
+  Lessons FEHLEN. Lesson-Enumeration daher primär aus dem
+  Klassen-Stundenplan; open-periods nur noch für Offen-Status
+  (`klasse faecher`), Arbeitsvorrat (`offen …`) und als Resolver- FALLBACK
+  (Fenster heute−7/+13), wenn der Plan nicht ladbar ist.
+- **Lesson-Adressierung außerhalb der Plan-Woche**: Resolver lädt die
+  Woche um --datum (± Nachbarwochen-Fallback). Für exotische Daten
+  ( weit außerhalb, Ferien) bleibt `--lsid` der Ausweg.
+
+## Timetable / Stundenpläne
+
+- **entries.ids sind PERIODEN-IDs, keine lsId**: Der Stundenplan-Endpunkt trägt keine Lesson-ID. lsId nur via `calendar-entry/detail` (`lesson.lessonId` = Matrix-lsId, verifiziert 2026-09-21) oder aus dem classregpage-ViewModel (`lessonId`).
+- **Positions-Felder sind nicht fest numeriert**: `position1..7` sind je nach resourceType anders belegt (Klassen-Plan: Klasse in `day.resource`, position4=null; Schüler-Plan: Klasse in position4; Raum-Plan: Klasse in position1). Immer über das `type`-Feld jedes Elements klassifizieren, nie über die Positionsnummer.
+- **Parallele Gruppen desselben Fachs in EINER Klasse existieren**: z.B. POS1_3BAIF_1/2/3 — gleiches Fach-Kürzel, gleiche Klasse, VERSCHIEDENE lsIds/Lehrer (Team-Teilung); Schüler können alle besuchen (Team-Unterricht) oder genau eine (E1x/E1y-Gruppenwahl). Gruppierung deshalb nach (Klasse, Fach, Primary-Lehrer): ein Entry gehört zur Gruppe, deren Primary in seinem Lehrer-Set steht — Ko-Lehrer-Variation innerhalb EINER lsId (EDJ vs. EDJ+WES) splittet dann NICHT, disjunkte Lehrer-Sets (parallele Gruppen) schon.
+- **MY_TIMETABLE/TEACHER-Plan anonymisiert die eigene Lehrerposition**: position1 trägt nur die KO-Lehrer (WMC_1 zeigte nur LEA, POS1 gar keinen Lehrer) — der eigene Short fehlt. Lehrer-basiertes Matching der eigenen Lessons ist unmöglich; eigen-Markierung daher per SLOT-Match (mein (Fach, Datum, Start) liegt in der Gruppen-Entry).
+- **Die Matrix ist RECHTE-BESCHRÄNKT**: fremde lsIds (andere Lehrer derselben Klasse, verifiziert 2026-09-21) melden `code 0: Internal server error` — nicht nur unbekannte lsIds! Der Resolver bevorzugt bei Mehrdeutigkeit deshalb die eigene Lesson (Slot-Match gegen MY_TIMETABLE).
+- ** Eine Woche genügt zur Lesson-Enumeration** (Lessons laufen übers Semester), aber Ferienwochen sind leer — Fallback auf Nachbarwochen (max. 4 probieren), wie bei der KV-Auflösung.
+- **filter?resourceType=STUDENT ist ~1,5 MB**: Schüler-Filter-Liste nur sparsam rufen; Schüler-Pläne besser direkt per bekannter STUDENT_ID (entries ist klein).
+- **ROOM-Plan kann NO_DATA liefern**: Räume ohne Stundenplan (z.B. Funktionsräume) antworten mit leeren days/`status: NO_DATA` — keine Fehler, einfach leer.
+- **`availability` in rooms/form ist SEMANTISCH UNGEKLÄRT**: beide aufgenommenen Slots lieferten für ALLE Räume `NONE` — für Freie-Raum-Suche nicht verwendbar; Belegung aus ROOM-entries ableiten.
+- **ViewModel-JSON in .do-Seiten ist HTML-escaped**: `data-dojo-props="viewModel: {&quot;…}"` — erst `html.unescape`, dann `raw_decode` ab `viewModel: ` (genau ein Objekt, robust gegen folgendes Markup). Reihenfolge beim Escaping beachten: `&` vor `"`.
 
 ## Class Register / Students
 
@@ -81,11 +107,13 @@ Read this file carefully before making changes in affected areas.
 - **Unknown lsIds report as `code 0: Internal server error`**: a bogus
   lsId in `getStudentLessonPeriodMatrix` (verified with 1, 22288,
   999999999 in every schoolyear) does NOT yield "not found" — the
-  server answers with a generic internal error. `Client` therefore maps
+  server answers with a generic internal error. DASSELBE gilt für
+  RECHTE-fremde lsIds (Lesson eines anderen Lehrers derselben Klasse,
+  verifiziert 2026-09-21)! `Client` therefore maps
   exactly that signature to `UnknownLessonError` (lsId + schoolyear in
   the message, findings hint included); `cli.main()` catches it
   centrally (stderr + exit 2, no traceback) for all matrix consumers
-   (`lesson matrix/aufnehmen/anpassen/roster`, `lesson info`). Other RuntimeErrors
+  (`lesson matrix/aufnehmen/anpassen/roster`, `lesson info`). Other RuntimeErrors
   pass through unwrapped — do NOT broaden the match.
 - **Fremde Lehrer-Stundenpläne sind nicht lesbar**: Public-Endpoint
   mit elementType=2/Lehrer-ID → 403 (`no right for anonymous user`);

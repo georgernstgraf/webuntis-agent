@@ -90,12 +90,19 @@ Domain-Objekte: **Klasse** (`wu klasse 3AHWII`), **Lesson** als
 ### Klasse und Lesson
 
 ```bash
-./wu klasse 3AHWII                    # KV, Fächer, Roster
+./wu klasse 3AHWII                    # KV, alle Lessons der Klasse, Roster
+./wu klasse 3AHWII faecher            # Lessons aus dem Stundenplan
 ./wu lesson 3AHWII/SWP1x              # Roster des nächsten Termins
 ./wu lesson 3AHWII/SWP1x termine --mit-lehrstoff
 ./wu lesson 3AHWII/SWP1x absenzen zeigen
-./wu student "Erika Muster"           # Klasse, KV, Fächer, Absenzen
+./wu student "Erika Muster"           # Klasse, KV, belegte Lessons (ohne Matrix)
+./wu student "Erika Muster" --absenzen  # + fehlt/gehalten der eigenen Lessons
 ```
+
+`student` läuft ohne Matrix-Calls: belegt/nicht belegt kommt aus dem
+Schüler-Stundenplan (belegt = eingeschrieben, Anwesenheit egal);
+parallele Gruppen desselben Fachs werden über den Primary-Lehrer
+getrennt, `eigen`-Lessons erkannt. Absenzen sind opt-in (`--absenzen`).
 
 ### Einzelnen Lehrstoff schreiben
 
@@ -138,6 +145,30 @@ Einzelner Termin oder ganze Lesson:
 ./wu offen pruefen --von 2025-09-01 --bis 2026-07-05 --pause 1.5
 ```
 
+### Abwesenheit eintragen / entfernen (Write, Testlauf-Standard)
+
+Echte Abwesenheits-Einträge im Klassenbuch (getrennt von der
+Matrix-Anwesenheit). Termin via `--termin-id` oder `--datum` (Standard
+heute, KLASSE/FACH-Adresse); Block-Standard wie in der Untis-UI
+(`--kein-block` für eine Einzelstunde, nur mit `--termin-id`).
+
+```bash
+./wu lesson 3AHWII/SWP1x absenzen eintragen --schueler-name "Erika Muster" --datum 2026-09-25
+./wu lesson 3AHWII/SWP1x absenzen zeigen --termin-id 5457498   # Absenz-IDs listen
+./wu lesson 3AHWII/SWP1x absenzen entfernen --absenz-id 3170001 --termin-id 5457498
+```
+
+### Räume (vorbereitet, noch nicht implementiert)
+
+```bash
+./wu raum suchen --datum 2026-09-25 --stunde 7 --max-plaetze 20   # Exit 3: Stub
+./wu raum groesse B3.07                                          # Exit 3: Stub
+```
+
+Die Endpunkte (Raum-Stundenplan, Raumverzeichnis mit Sitzplätzen) sind
+dokumentiert (`docs/WEBUNTIS_API.md`); die Freie-Raum-Suche ist als
+Folgeissue geplant.
+
 ### Migration (alte → neue Befehle, Stand 2026-09-21)
 
 Harter Schnitt ohne Aliase. Entsprechungstabelle:
@@ -159,6 +190,13 @@ Harter Schnitt ohne Aliase. Entsprechungstabelle:
 | `absences check --period` | `lesson KLASSE/FACH absenzen pruefen --termin-id` |
 | `kv KLASSE` / `kv --student` | `klasse KLASSE kv` / `student NAME` |
 | `login/logout/session/record/rpc/rest` | `intern …` (aus der Hilfe versteckt) |
+
+Neu (Stundenplan-Serie, 2026-09-21): `student --absenzen` (Absenzen
+opt-in, eigene Lessons), `lesson KLASSE/FACH absenzen
+eintragen/entfernen` (echte Abwesenheits-Einträge, Write),
+`lesson KLASSE/FACH absenzen zeigen --termin-id` (Absenz-IDs listen),
+`raum suchen/groesse` (Stubs). `klasse … faecher` zeigt jetzt ALLE
+Lessons der Klasse aus dem Stundenplan statt nur offener.
 
 Flag-Umbenennungen: `--school-year-id` → `--schuljahr-id`,
 `--start/--end` → `--von/--bis`, `--dry-run/--no-dry-run` →

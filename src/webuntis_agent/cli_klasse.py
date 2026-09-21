@@ -13,7 +13,7 @@ import sys
 from typing import TYPE_CHECKING
 
 from webuntis_agent.cli_common import (
-    _group_lesson_entries,
+    _find_klasse,
     _make_client,
     _open_period_entries,
 )
@@ -28,21 +28,8 @@ def _kv_info(c: Client, sy: int, needle: int | str) -> dict:
 
     Wirft RuntimeError, wenn die Klasse nicht gefunden wird.
     """
-    res = c.get_klassen(schoolyear_id=sy)
-    klassen = res.get("result", []) if isinstance(res, dict) else res
-    if isinstance(needle, str) and needle.isdigit():
-        needle = int(needle)
-    hit = None
-    for k in klassen:
-        if isinstance(needle, int) and k.get("id") == needle:
-            hit = k
-            break
-        if (isinstance(needle, str)
-                and k.get("name", "").lower() == needle.lower()):
-            hit = k
-            break
-    if hit is None:
-        raise RuntimeError(f"Klasse '{needle}' nicht gefunden")
+    from webuntis_agent.cli_common import _find_klasse
+    hit = _find_klasse(c, sy, needle)
     teacher_ids = [v for key in ("teacher1", "teacher2", "teacher3")
                    if (v := hit.get(key))]
     return {
@@ -74,33 +61,115 @@ def cmd_klasse_kv(args: argparse.Namespace) -> int:
 def _faecher_groups(c: Client, sy: int, klassenname: str,
                     start: str | None, end: str | None,
                     fach: str | None = None) -> tuple[list[dict], str, str]:
-    """Eigene Lessons einer Klasse als lsId-Gruppen (Fächer).
+    """Lessons einer Klasse als Gruppen — aus dem Klassen-Stundenplan.
 
-    Quelle sind die offenen Perioden im Zeitraum (Standard: Schuljahr bis
-    heute) — d.h. Lessons mit noch offenen Lehrstoffen/Absenzen. Liefert
-    (Gruppen, von, bis).
+    Quelle: timetable/entries (CLASS) — ALLE Lessons der Klasse (auch
+    erledigte), anders als open-periods. Default-Zeitraum: die Woche um
+    heute (eine Woche genügt — Lessons laufen übers Semester); mit
+    --von/--bis werden die Wochen des Bereichs iteriert (max. 8, dann
+    Warnung). Je Gruppe: `eigen` (eigene Lesson, via Mein Stundenplan),
+    `offen` (offene Perioden im Zeitraum, nur eigene Lessons — die
+    Zählung ist teacher-scoped). KEINE lsId (nur im Einzelfall via
+    `lesson K/F`-Resolver per calendar-entry/detail).
     """
-    if start is None or end is None:
-        syr = next((y for y in c.get_schoolyears() if int(y["id"]) == sy),
-                   None)
-        if syr is None:
-            raise RuntimeError(f"Schuljahr {sy} nicht gefunden")
-        dr = syr["dateRange"]
-        start = start or str(dr["start"])[:10]
-        end = end or str(dr["end"])[:10]
-    entries = _open_period_entries(c, sy, start, end)
-    cls_l = klassenname.lower()
-    entries = [e for e in entries
-               if (e.get("class") or "").lower() == cls_l]
+    from datetime import date as _date, timedelta as _td
+    from webuntis_agent.cli_lesson import _week_bounds
+    from webuntis_agent.client import (
+        group_timetable_lessons,
+        parse_timetable_entries,
+    )
+    k = _find_klasse(c, sy, klassenname)
+    class_id = int(k["id"])
+    if start and end:
+        first = _date.fromisoformat(start)
+        last = _date.fromisoformat(end)
+        weeks = []
+        cur = first - _td(days=first.weekday())
+        while cur <= last and len(weeks) < 8:
+            weeks.append(_week_bounds(cur))
+            cur += _td(days=7)
+        if cur <= last:
+            print("Hinweis: Zeitraum über 8 Wochen gedeckelt — "
+                  "Lessons laufen übers Semester, weniger Wochen genügen.",
+                  file=sys.stderr)
+    else:
+        weeks = [_week_bounds(_date.today())]
+    entries: list[dict] = []
+    for ws, we in weeks:
+        entries += parse_timetable_entries(
+            c.get_timetable_entries("CLASS", class_id, ws, we))
+    lessons = group_timetable_lessons(entries)
     if fach:
         fl = fach.lower()
-        entries = [e for e in entries
-                   if (e.get("subject") or "").lower().startswith(fl)]
-    return _group_lesson_entries(entries), start, end
+        lessons = [g for g in lessons
+                   if (g.get("subject") or "").lower().startswith(fl)]
+    kl_l = (k.get("name") or klassenname).lower()
+    # eigene Lessons: mein Termin-Slot (Fach, Datum, Start) liegt per
+    # Definition in meiner Gruppe — Lehrer-Positionen im eigenen Plan
+    # sind anonymisiert (own short fehlt), Slot-Matching ist exakt.
+    my_slots: set[tuple[str, str, str]] | None = None
+    try:
+        my = parse_timetable_entries(c.get_timetable_entries(
+            "TEACHER", c.teacher_id, weeks[0][0], weeks[0][1],
+            timetable_type="MY_TIMETABLE"))
+        my_slots = {
+            ((e.get("subject") or "").lower(), e.get("date"),
+             (e.get("start") or "")[:16])
+            for e in my
+            if (e.get("class") or "").lower() == kl_l and e.get("subject")}
+    except Exception:
+        my_slots = None
+    offen_by_subject: dict[str, int] = {}
+    try:
+        range_start = weeks[0][0]
+        range_end = weeks[-1][1]
+        for e in _open_period_entries(c, sy, range_start, range_end):
+            if (e.get("class") or "").lower() != kl_l:
+                continue
+            key = (e.get("subject") or "").lower()
+            offen_by_subject[key] = offen_by_subject.get(key, 0) + 1
+    except Exception as e:
+        print(f"Hinweis: Offen-Status nicht ladbar ({e})", file=sys.stderr)
+    groups: list[dict] = []
+    for g in lessons:
+        subj_l = (g.get("subject") or "").lower()
+        if my_slots is None:
+            eigen = None
+        else:
+            eigen = any(
+                (subj_l, e.get("date"), (e.get("start") or "")[:16])
+                in my_slots for e in g["entries"])
+        weekday_times: list[str] = []
+        for e in g["entries"]:
+            wd = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][
+                _date.fromisoformat(e["date"]).weekday()]
+            t = (e.get("start") or "")[11:16]
+            label = f"{wd} {t}"
+            if label not in weekday_times:
+                weekday_times.append(label)
+        groups.append({
+            "subject": g["subject"], "subjectLong": g.get("subjectLong"),
+            "class": g.get("class"), "classLong": g.get("classLong"),
+            "primaryTeacher": g.get("primaryTeacher"),
+            "parallel": bool(g.get("parallel")),
+            "teachers": g.get("teachers"),
+            "teacherLongs": g.get("teacherLongs"),
+            "rooms": g.get("rooms"),
+            "dates": g.get("dates"),
+            "weekdayTimes": weekday_times,
+            "periods": len(g["entries"]),
+            "eigen": eigen,
+            "offen": offen_by_subject.get(subj_l, 0),
+        })
+    groups.sort(key=lambda g: (g["subject"] or "",
+                               g["primaryTeacher"] or ""))
+    range_start = weeks[0][0]
+    range_end = weeks[-1][1]
+    return groups, range_start, range_end
 
 
 def cmd_klasse_faecher(args: argparse.Namespace) -> int:
-    """Eigene Lessons (Fächer) einer Klasse auflisten, gruppiert je Lesson."""
+    """Lessons (Fächer) einer Klasse auflisten — aus dem Stundenplan."""
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
     try:
@@ -110,13 +179,13 @@ def cmd_klasse_faecher(args: argparse.Namespace) -> int:
         print(str(e), file=sys.stderr)
         return 2
     if not groups:
-        print(f"(keine offenen Lessons für {args.klassenname}"
+        print(f"(keine Lessons für {args.klassenname}"
               + (f"/{args.fach}" if args.fach else "")
               + f" in {start}..{end})")
         return 0
     full_by_short: dict[str, str] = {}
     if args.volle_namen:
-        shorts = sorted({t for g in groups for t in g["teacherShorts"]})
+        shorts = sorted({t for g in groups for t in g["teachers"]})
         for short in shorts:
             hits = c.search_timetable(short, school_year_id=sy)
             match = next((h["resource"] for h in hits
@@ -129,21 +198,27 @@ def cmd_klasse_faecher(args: argparse.Namespace) -> int:
         print(json.dumps({
             "class": args.klassenname,
             "range": {"start": start, "end": end},
-            "lessons": [{k: v for k, v in g.items() if k != "entries"}
-                        for g in groups],
+            "lessons": groups,
         }, indent=2, ensure_ascii=False))
         return 0
     for g in groups:
-        teachers = [full_by_short.get(s, t)
-                    for t, s in zip(g["teachers"], g["teacherShorts"])] \
+        teachers = [full_by_short.get(t, t) for t in g["teachers"]] \
             if args.volle_namen else g["teachers"]
-        print(f"lsId {g['lsId']}  {g['subject']} — {g['subjectLong']}")
-        print(f"  {g['class']}  Perioden={g['periods']}  "
-              f"{g['firstDate']} .. {g['lastDate']}  offen={len(g['entries'])}")
+        eigen = " (eigen)" if g["eigen"] else ""
+        parallel = (f" [{g['primaryTeacher']}]"
+                    if g["parallel"] and g["primaryTeacher"] else "")
+        print(f"{g['subject']:8}{parallel} — {g['subjectLong']}{eigen}")
+        zeiten = ", ".join(g["weekdayTimes"])
+        print(f"  {g['class']}  Termine/Woche: {g['periods']}  {zeiten}")
         if teachers:
             print(f"  Lehrer: {' + '.join(teachers)}")
         if g["rooms"]:
             print(f"  Räume:  {' + '.join(g['rooms'])}")
+        if g["offen"]:
+            print(f"  offen: {g['offen']} Perioden im Zeitraum")
+    print("Hinweis: alle Lessons der Klasse aus dem Stundenplan; "
+          "'eigen' = eigene Lessons, 'offen' nur für eigene zählbar.",
+          file=sys.stderr)
     return 0
 
 
@@ -224,21 +299,23 @@ def cmd_klasse(args: argparse.Namespace) -> int:
             "longName": info["longName"],
             "kv": info["teachers"],
             "range": {"start": start, "end": end},
-            "lessons": [{k: v for k, v in g.items() if k != "entries"}
-                        for g in groups],
+            "lessons": groups,
             "students": [{"name": n, "klasse": k} for n, k in rows],
         }, indent=2, ensure_ascii=False))
         return 0
     print(f"{info['name']} ({info['longName']})")
     for tid, name in info["teachers"].items():
         print(f"  KV: {name}")
-    print(f"\nFächer (eigene Lessons, offen in {start}..{end}):")
+    print(f"\nFächer (alle Lessons der Klasse, Stundenplan {start}..{end}):")
     if not groups:
         print("  (keine)")
     for g in groups:
         lehrer = f" ({' + '.join(g['teachers'])})" if g["teachers"] else ""
-        print(f"  {g['subject']:8} — {g['subjectLong']}{lehrer} "
-              f"[lsId {g['lsId']}]")
+        eigen = " (eigen)" if g["eigen"] else ""
+        parallel = (f" [{g['primaryTeacher']}]"
+                    if g["parallel"] and g["primaryTeacher"] else "")
+        print(f"  {g['subject']:8}{parallel} — {g['subjectLong']}{lehrer}"
+              f"{eigen}")
     print(f"\nRoster ({len(rows)} Schüler):")
     for name, klass in rows:
         print(f"  {name}")

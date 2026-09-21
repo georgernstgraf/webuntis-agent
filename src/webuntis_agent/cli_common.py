@@ -167,6 +167,25 @@ def _make_client(args: argparse.Namespace):
     return c
 
 
+def _find_klasse(c: Client, sy: int, needle: int | str) -> dict:
+    """Klassen-Dict (getKlassen) per ID oder exaktem Name suchen.
+
+    Einzige Quelle für classId (für timetable/entries mit
+    resourceType=CLASS). Wirft RuntimeError, wenn nicht gefunden.
+    """
+    res = c.get_klassen(schoolyear_id=sy)
+    klassen = res.get("result", []) if isinstance(res, dict) else res
+    if isinstance(needle, str) and needle.isdigit():
+        needle = int(needle)
+    for k in klassen:
+        if isinstance(needle, int) and k.get("id") == needle:
+            return k
+        if (isinstance(needle, str)
+                and k.get("name", "").lower() == needle.lower()):
+            return k
+    raise RuntimeError(f"Klasse '{needle}' nicht gefunden")
+
+
 def _add_school_year_arg(sp):
     """Allow --schuljahr-id AFTER the subcommand (both positions work).
 

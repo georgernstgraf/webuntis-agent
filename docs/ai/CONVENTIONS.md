@@ -4,8 +4,8 @@ Coding patterns, naming rules, and style agreements for this project.
 Follow these without question. Do not deviate unless explicitly told.
 
 ## CLI-Vokabular (deutsch, seit 2026-09-21)
-- Top-Level: `klasse`, `lesson`, `student`, `offen`, `search`, `intern`
-  (intern aus der Hilfe versteckt, s. DECISIONS.md)
+- Top-Level: `klasse`, `lesson`, `student`, `offen`, `raum` (Stubs),
+  `search`, `intern` (intern aus der Hilfe versteckt, s. DECISIONS.md)
 - Lesson-Adresse: genau EIN Positionsargument `KLASSE/FACH`
   (z.B. `3AHWII/SWP1x`); `--lsid` nur als direkter Ausweg
 - Optionen: `--schuljahr-id`, `--datum (YYYY-MM-DD|heute)`,
@@ -17,6 +17,9 @@ Follow these without question. Do not deviate unless explicitly told.
   nur sichtbare Strings werden übersetzt, kein Reader-Umbau
 - Jede (Sub-)Gruppe bekommt `description` + `epilog` mit Beispielen —
   `wu` ohne Argumente muss selbsterklärend sein
+- Absenzen-Schalter: `--absenzen` (opt-in, `student`) — Standard-Ausgabe
+  bleibt Matrix-frei; Writes tragen `--testlauf/--ausfuehren`
+  (`absenzen eintragen/entfernen`, `aufnehmen/anpassen`)
 
 ## Naming
 - Class names from WebUntis are UPPERCASE (e.g. `5AHWII`); git folder names are lowercase (e.g. `5ahwii/`). Always lowercase for git pathspec.
@@ -26,7 +29,7 @@ Follow these without question. Do not deviate unless explicitly told.
 ## File Layout
 - `src/webuntis_agent/` — Python-Paket: recorder, client, gitlog, cli
   (Verdrahtung) + cli_common (Infra), cli_klasse, cli_lesson, cli_student,
-  cli_offen, cli_suche, cli_intern
+  cli_offen, cli_suche, cli_intern, cli_raum
 - `scripts/` — shell scripts (brave-debug.sh) and helper scripts (show-cookies.py)
 - `recordings/` — gitignored, contains session cookies and captured traffic
 - `docs/WEBUNTIS_API.md` — authoritative API reference
@@ -34,6 +37,32 @@ Follow these without question. Do not deviate unless explicitly told.
 - `.opencode/skills/` — opencode skills (fill-open-periods)
 - `.env` — gitignored, contains WEBUNTIS_USER/PASSWORD
 - `wu` — CLI shortcut wrapper: resolves symlinks (`readlink -f`) so it works from any directory; prefers the repo's `.venv/bin/python`, falls back to `python3` with an import-probe of httpx/websockets and a German setup guide (exit 1) when modules are missing; `cli.main()` additionally catches ModuleNotFoundError (exit 3) for direct `python -m` calls
+
+## Doku-Schablonen (API-Referenz, seit 2026-09-21)
+- Jeder neu entdeckte Endpunkt bekommt in `docs/WEBUNTIS_API.md` EINE
+  Schablone: Zweck, Methode/Pfad, Query-/Body-Params (Typ, Pflicht,
+  Beispiel), Header, Response-Form (Felder + Typen + Semantik
+  kritischer Felder), Write-Warnung falls zutreffend, CLI-Mapping,
+  Recording-Quelle.
+- **Anonymisierung (verbindlich)**: KEINE echten IDs und KEINE echten
+  Personen-/Klassen-/Raumnamen in Beispielen — Platzhalter
+  (`CLASS_ID`, `STUDENT_ID`, `LESSON_ID`, `PERIOD_ID`, `ABSENCE_ID`,
+  `ROOM_ID`) oder offenkundig fiktive Werte (`Erika Musterfrau`,
+  `5XZY`). Hinweis aufnehmen, dass Live-IDs jederzeit per CLI
+  (`--json`, `intern rest`) in Sekunden erhältlich sind. Echte Werte
+  nur in `recordings/` (gitignored) bzw. `docs/ai/LOCAL.md` (gitignored,
+  nur auf Wunsch).
+
+## Lesson-Enumeration (seit 2026-09-21)
+- „Lesson" = Fach in einer Klasse (1–2 Semester); Termine sind
+  Detail-Sicht (Absenzen/Lehrstoff), keine eigene Entität der CLI-Adresse
+- Enumerations-Quelle ist der KLASSEN-STUNDENPLAN
+  (`timetable/entries`, resourceType=CLASS) — ALLE Lessons; `open-periods`
+  nur für Offen-Status/Arbeitsvorrat/Resolver-Fallback
+- `belegt` = eingeschrieben (Fach im Schüler-Stundenplan) — Anwesenheit
+  ist NICHT Teil der Definition; krank-immer-abwesende bleiben belegt
+- lsId nur im Einzelfall auflösen (Resolver, `--absenzen`): ein
+  `calendar-entry/detail`-Call — keine lsId-Spalten in Listen
 
 ## API Patterns
 - All REST calls go through `Client._rest_headers()` which injects Cookie, Authorization (Bearer JWT), Tenant-Id, X-Webuntis-Api-School-Year-Id
