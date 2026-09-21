@@ -1,7 +1,7 @@
 # webuntis-agent
 
-Automate the **Lehrstoff eintragen** (lesson topic entry) and **Abwesenheiten
-kontrolliert** (absence check) chores in [WebUntis] by reverse-engineering the
+Automate the **Lehrstoff eintragen** (lesson topic entry) and **Absenzen
+prüfen** (absence check) chores in [WebUntis] by reverse-engineering the
 undocumented REST endpoints that the web UI calls — then replaying them from a
 Python CLI.
 
@@ -70,85 +70,103 @@ cp .env.example .env
 
 ---
 
-## Usage
+## Verwendung
 
-Shortcut (no venv needed): `./wu …` — e.g. `./wu search "Erika Muster"`.
-It just sets `PYTHONPATH=src` and forwards to `webuntis_agent.cli`.
+Kurzbefehl: `./wu …` — z.B. `./wu search "Erika Muster"`.
+Er setzt `PYTHONPATH=src` und reicht an `webuntis_agent.cli` durch.
 
-### List open periods (lessons missing a topic or absence check)
+Domain-Objekte: **Klasse** (`wu klasse 3AHWII`), **Lesson** als
+`KLASSE/FACH` (`wu lesson 3AHWII/SWP1x`), **Student**
+(`wu student "Erika Muster"`). Alle Ausgaben sind deutsch;
+`wu --help` (und jede Gruppen-Hilfe) erklärt mit Beispielen.
 
-```bash
-.venv/bin/python -m webuntis_agent.cli lehrstoff list \
-    --start 2025-09-01 --end 2026-07-05
-```
-
-Add `--json` for machine-readable output (includes clickable
-`lessonDetailsUrl` per period):
+### Offene Perioden (Arbeitsvorrat: Lehrstoff oder Absenzen fehlen)
 
 ```bash
-.venv/bin/python -m webuntis_agent.cli lehrstoff list \
-    --start 2025-09-01 --end 2026-07-05 --json
+./wu offen status --von 2025-09-01 --bis 2026-07-05
+./wu offen liste --von 2025-09-01 --bis 2026-07-05 --json
 ```
 
-### Write a single lesson topic
+### Klasse und Lesson
 
 ```bash
-.venv/bin/python -m webuntis_agent.cli lehrstoff set \
-    --period 5458590 --topic-id 2296724 \
-    --text-file /tmp/topic.txt
+./wu klasse 3AHWII                    # KV, Fächer, Roster
+./wu lesson 3AHWII/SWP1x              # Roster des nächsten Termins
+./wu lesson 3AHWII/SWP1x termine --mit-lehrstoff
+./wu lesson 3AHWII/SWP1x absenzen zeigen
+./wu student "Erika Muster"           # Klasse, KV, Fächer, Absenzen
 ```
 
-(Use `--text-file` instead of `--text "..."` to avoid shell-quoting issues
-with UTF-8 characters like `HÜ`, `ä`, `ö`.)
-
-### Batch-submit multiple topics from a JSON file
+### Einzelnen Lehrstoff schreiben
 
 ```bash
-.venv/bin/python -m webuntis_agent.cli lehrstoff batch-set \
-    --file /tmp/batch.json --delay 1.0
+./wu lesson 3AHWII/SWP1x lehrstoff zeigen --termin-id 5458590
+./wu lesson 3AHWII/SWP1x lehrstoff eintragen \
+    --termin-id 5458590 --text-datei /tmp/topic.txt
 ```
 
-JSON format:
+(`--text-datei` statt `--text "…"` verwenden — die Shell verstümmelt
+Umlaute wie `HÜ`, `ä`, `ö`.)
 
-```json
-[
-  {
-    "periodId": 5458590,
-    "topicId": 2296724,
-    "text": "Matura-Aufgabe Datenmodellierung: Prisma-Schema, SQLite-DDL",
-    "classId": 3661,
-    "start": "2026-03-18T13:25:00",
-    "end": "2026-03-18T15:15:00",
-    "date": "2026-03-16"
-  }
-]
-```
-
-### Derive topic text from Git history
+### Lehrstoffe aus Git-Historie vorschlagen + batchweise eintragen
 
 ```bash
-.venv/bin/python -m webuntis_agent.cli lehrstoff from-git \
-    --class-name 5AHWII --subject SWP1y --date 2026-03-18 --dry-run
+./wu offen vorschlag --von 2025-09-01 --bis 2026-07-05 > vorschlag.json
+# Texte prüfen/bestätigen, dann:
+./wu offen eintragen --datei batch.json --pause 1.0
 ```
 
-This searches the candidate GRG-* repos for commits matching the class and
-date (±10 days, ±30 fallback), prints the commits + full diffs, and proposes
-a topic text. Drop `--dry-run` and add `--period`/`--topic-id` to submit.
+Vorschlags-JSON-Format je Block: `periodId`, `topicId`, `text`,
+`classId`, `start`, `end`, `date` (+ `commits`/`diffs` als Quelle).
 
-### Check absences (Abwesenheiten kontrolliert)
-
-Single period:
+### Lehrstoff-Text aus Git-Historie ableiten (einzeln)
 
 ```bash
-.venv/bin/python -m webuntis_agent.cli absences check --period 5457498
+./wu lesson 5AHWII/SWP1y lehrstoff aus-git --datum 2026-03-18
 ```
 
-All open absences for a date range (auto-fetches open periods, checks each):
+Sucht in den GRG-*-Repos nach Commits zu Klasse+Datum (±10 Tage,
+±30 Fallback), zeigt Commits + Diffs und schlägt einen Text vor.
+Mit `--ausfuehren` (+ `--termin-id`/`--thema-id`) direkt eintragen.
+
+### Absenzen prüfen
+
+Einzelner Termin oder ganze Lesson:
 
 ```bash
-.venv/bin/python -m webuntis_agent.cli absences check-all \
-    --start 2025-09-01 --end 2026-07-05 --delay 1.5
+./wu lesson 3AHWII/SWP1x absenzen pruefen --termin-id 5457498
+./wu offen pruefen --von 2025-09-01 --bis 2026-07-05 --pause 1.5
 ```
+
+### Migration (alte → neue Befehle, Stand 2026-09-21)
+
+Harter Schnitt ohne Aliase. Entsprechungstabelle:
+
+| alt | neu |
+|---|---|
+| `students roster KLASSE FACH` | `lesson KLASSE/FACH [roster]` |
+| `students list --lsid X` | `lesson --lsid X matrix` |
+| `students add/edit …` | `lesson KLASSE/FACH aufnehmen/anpassen …` |
+| `students find NAME` | `student NAME` |
+| `lessons KLASSE` | `klasse KLASSE faecher` |
+| `lesson info LSID` | `lesson --lsid LSID info` / `lesson KLASSE/FACH info` |
+| `lehrstoff list/status/verify` | `offen liste/status/verifizieren` |
+| `lehrstoff fill` (Vorschlag) | `offen vorschlag` |
+| `lehrstoff batch-set --file` | `offen eintragen --datei` |
+| `lehrstoff fill-fixed` | `offen festtexte` |
+| `lehrstoff get/set/from-git` | `lesson KLASSE/FACH lehrstoff zeigen/eintragen/aus-git` |
+| `absences check-all/batch-check` | `offen pruefen` |
+| `absences check --period` | `lesson KLASSE/FACH absenzen pruefen --termin-id` |
+| `kv KLASSE` / `kv --student` | `klasse KLASSE kv` / `student NAME` |
+| `login/logout/session/record/rpc/rest` | `intern …` (aus der Hilfe versteckt) |
+
+Flag-Umbenennungen: `--school-year-id` → `--schuljahr-id`,
+`--start/--end` → `--von/--bis`, `--dry-run/--no-dry-run` →
+`--testlauf/--ausfuehren`, `--date` → `--datum` (`heute` statt `now`),
+`--text-file` → `--text-datei`, `--file` → `--datei`,
+`--delay` → `--pause`, `--class-id` → `--klassen-id`,
+`--period` → `--termin-id`, `--topic-id` → `--thema-id`.
+JSON-Schlüssel bleiben englisch.
 
 ### Reverse-engineer new endpoints (CDP-Recorder)
 
@@ -240,12 +258,18 @@ webuntis-agent/
 │   ├── recorder.py       # CDP-Recorder: Network + Runtime → recordings/
 │   ├── client.py         # WebUntis API client (login, JWT, REST, absences)
 │   ├── gitlog.py         # GRG-* git-log analysis (split classes, diffs)
-│   └── cli.py            # CLI: lehrstoff + absences subcommands
+│   ├── cli.py            # CLI-Verdrahtung: klasse/lesson/student/offen/…
+│   ├── cli_common.py     # geteilte Infra (Session, Period-Helpers, Suche)
+│   ├── cli_klasse.py     # klasse: Übersicht, Roster, Fächer, KV
+│   ├── cli_lesson.py     # lesson: Roster, Termine, Lehrstoff, Absenzen
+│   ├── cli_student.py    # student: Suche + Detail (Fächer, Absenzen)
+│   ├── cli_offen.py      # offen: Arbeitsvorrat (Vorschlag, Eintragen, Prüfen)
+│   ├── cli_suche.py      # search: Suche mit Detail-Dispatch
+│   └── cli_intern.py     # intern: Session, Recorder, rpc/rest (versteckt)
 ├── scripts/
 │   ├── brave-debug.sh     # start Brave with --remote-debugging-port=9222
 │   └── show-cookies.py    # inspect harvested cookies
-├── tests/
-│   └── test_gitlog.py     # 8 tests: split classes, February change, examples
+├── tests/                 # pytest-Suite (Fake-Clients, keine Netz-Calls)
 ├── docs/
 │   ├── WEBUNTIS_API.md    # authoritative endpoint reference
 │   └── ai/                # knowledge persistence (DECISIONS, PITFALLS, …)

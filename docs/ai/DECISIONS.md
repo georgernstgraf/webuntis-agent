@@ -27,11 +27,11 @@ Superseded decisions are relocated to HISTORY.md.
 - **Considered**: Exact match per variant
 - **Tradeoff**: Must verify no false prefix matches (e.g. "INF" matches "INFI" but also "INFO" if it existed)
 
-## 2025-08-21: batch-set with JSON file instead of --text CLI arg
-- **Choice**: `lehrstoff batch-set --file <json>` for bulk entries; `--text-file`/`--text-stdin` for single
-- **Reason**: Shell quoting mangles UTF-8 (Umlaute: "HÜ" became "HUe" in bash array)
-- **Considered**: `--text` only
-- **Tradeoff**: Extra temp file, but UTF-8 safe
+## 2025-08-21: JSON-Datei statt --text-Flag für Bulk-Einträge
+- **Choice**: `offen eintragen --datei <json>` für Bulk; `--text-datei`/`--text-stdin` für einzeln
+- **Reason**: Shell-Quoting zerstört UTF-8 (Umlaute: "HÜ" wurde "HUe")
+- **Considered**: nur `--text`
+- **Tradeoff**: extra Temp-Datei, dafür UTF-8-sicher
 
 ## 2025-08-21: id=0 for new topic creation
 - **Choice**: When topicId is None (no existing topic row), send `id: 0` in PUT body
@@ -72,14 +72,30 @@ Superseded decisions are relocated to HISTORY.md.
 - **Considered**: Untracking HANDOFF/STATE entirely; full history rewrite (filter-repo)
 - **Tradeoff**: Old person data remains in git history (accepted); agents must actively route person data to LOCAL.md
 
-## 2026-09-18: cli.py split into cli_* modules, domain dataclasses keep dict wire format
-- **Choice**: `cli.py` thin (argparse wiring + re-exports); logic in `cli_common` (infra + `PeriodFields`/`LessonGroup`/`SubmitItem`), `cli_lehrstoff`, `cli_students`, `cli_absences`, `cli_misc`. Dataclasses convert back to the original dicts (`to_dict`, key order kept) so CLI JSON stays byte-identical (verified by differential test vs HEAD on random data).
-- **Reason**: `cli.py` ~2000 lines Divergent Change (review #15); dict wire format keeps tests/skill contracts stable
-- **Considered**: Big-bang rewrite of outputs to dataclasses; leaving the monolith
-- **Tradeoff**: 5 modules + re-export layer; `from webuntis_agent.cli import …` keeps working (e.g. tests/test_lessons.py unchanged)
+## 2026-09-21: Domain-CLI (harter Schnitt, alles deutsch)
+- **Choice**: Befehle heißen `klasse`, `lesson`, `student`, `offen`,
+  `search`, `intern` — alte Namen (`students`, `lessons`, `lehrstoff`,
+  `absences`, `kv`, …) ersatzlos gestrichen, keine Aliase. Eine Lesson
+  wird immer als `KLASSE/FACH` adressiert (z.B. `3AHWII/SWP1x`).
+  Lehrstoff ist Unterbefehl von `lesson`, Absenzen stehen in `lesson`
+  (fehlt/gehalten je Schüler) und im `student`-Detail. `offen` ist die
+  Top-Level-Arbeitsvorratssicht offener Perioden. `search` bleibt
+  Top-Level (einzige englische Ausnahme — wird per Shell-Alias
+  aufgerufen) und dispatcht: Student→Student-Detail,
+  Lehrer→dessen Lessons, Klasse→Klassen-Sicht. `intern`
+  (login/logout/session/record/rpc/rest) ist aus der Hilfe versteckt
+  (`help=SUPPRESS`), bleibt aber als Escape-Hatch funktionsfähig.
+- **Reason**: Domain-Objekte (Klasse, Lesson, Student) statt
+  Endpoint-Namen; WebUntis ist DACH-only → UI deutsch.
+- **Considered**: Alias-Modell (abgelehnt — zwei Namenswelten),
+  nur-Hilfe-ohne-Umbau (abgelehnt — löst Singular/Plural-Chaos nicht)
+- **Tradeoff**: bricht alle bestehenden Aufrufe/Notizen/Skripte sofort —
+  Migrationsliste alt→neu in README pflegen; Skill synchron migrieren
+- **Scope**: UI (Hilfe, Meldungen, Befehls-/Optionsnamen) deutsch;
+  JSON-Keys bleiben englisch (Skill-Parsing), interner Code englisch
 
 ## 2026-09-18: roster falls back to nearest unit and labels the effective date
-- **Choice**: `students roster` with no unit on the requested date lists the nearest upcoming unit (else last held) instead of erroring; the stdout header then carries the effective date (`3AAIF/WMC_1 (2026-09-22)`), `--json` reports `date` + `requestedDate`
+- **Choice**: `lesson roster` with no unit on the requested date lists the nearest upcoming unit (else last held) instead of erroring; the stdout header then carries the effective date (`3AAIF/WMC_1 (2026-09-22)`), `--json` reports `date` + `requestedDate`
 - **Reason**: User always wants a class list (attendance check happens anyway); a mislabeled list would be worse than a substituted one, hence the visible date + stderr note
 - **Considered**: Hard error on missing unit (first version); nearest-by-distance with future tie-break (rejected — no date tricks)
 - **Tradeoff**: Pasted lists may cover a different day than requested — mitigated by the visible effective date

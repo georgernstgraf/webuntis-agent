@@ -22,6 +22,29 @@ DEFAULT_HOST = "https://spengergasse.webuntis.com"
 DEFAULT_SCHOOL = "spengergasse"
 
 
+class UnknownLessonError(RuntimeError):
+    """A lesson id (lsId) unknown to the server in the active schoolyear.
+
+    The server answers getStudentLessonPeriodMatrix for bogus ids with a
+    generic `code 0: Internal server error` instead of "not found"
+    (verified with ids 1, 22288, 999999999 in every schoolyear) — so we
+    map that signature to a message the user can act on. Carries `lsid`
+    and `schoolyear_id` for programmatic use.
+    """
+
+    def __init__(self, lsid: int, schoolyear_id: int,
+                 schoolyear_label: str) -> None:
+        self.lsid = lsid
+        self.schoolyear_id = schoolyear_id
+        super().__init__(
+            f"lsId {lsid} gibt es im Schuljahr {schoolyear_label} "
+            f"(id {schoolyear_id}) nicht "
+            "(Server meldet: Internal server error). "
+            "Gültige lsIds z.B. via 'wu klasse <KLASSE> faecher' oder "
+            "'wu offen liste --von <von> --bis <bis>'."
+        )
+
+
 def _request_with_retry(
     http: httpx.Client, method: str, url: str, *,
     client: "Client | None" = None,
@@ -498,7 +521,7 @@ class Client:
         raise RuntimeError(
             f"no schoolyear matches {when.isoformat()} — schoolyear ids "
             "are NOT derivable arithmetically (see docs/ai/PITFALLS.md); "
-            "resolve dynamically or override with --school-year-id"
+            "resolve dynamically or override with --schuljahr-id"
         )
 
     @staticmethod
@@ -918,11 +941,28 @@ class Client:
         self, ls_id: int,
         school_year_id: int | None = None,
     ) -> dict[str, Any]:
-        """Load the attendance matrix for a lesson (all school students)."""
-        return self._jsonrpc_web(
-            "jsonStudentgroupService", "getStudentLessonPeriodMatrix", [ls_id],
-            school_year_id=school_year_id,
-        )
+        """Load the attendance matrix for a lesson (all school students).
+
+        Unknown lsIds surface as UnknownLessonError (the server reports
+        them as a generic code-0 Internal server error, see
+        docs/ai/PITFALLS.md); anything else propagates unchanged.
+        """
+        try:
+            return self._jsonrpc_web(
+                "jsonStudentgroupService", "getStudentLessonPeriodMatrix",
+                [ls_id],
+                school_year_id=school_year_id,
+            )
+        except RuntimeError as e:
+            if ("getStudentLessonPeriodMatrix" in str(e)
+                    and "Internal server error" in str(e)):
+                sy = self.resolve_schoolyear_id(override=school_year_id)
+                try:
+                    label = self.schoolyear_label(sy)
+                except Exception:
+                    label = str(sy)
+                raise UnknownLessonError(ls_id, sy, label) from e
+            raise
 
     def submit_student_lesson_period_data(
         self, ls_id: int, main_studentgroup_id: int,

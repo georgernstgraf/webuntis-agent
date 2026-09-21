@@ -3,13 +3,30 @@
 Coding patterns, naming rules, and style agreements for this project.
 Follow these without question. Do not deviate unless explicitly told.
 
+## CLI-Vokabular (deutsch, seit 2026-09-21)
+- Top-Level: `klasse`, `lesson`, `student`, `offen`, `search`, `intern`
+  (intern aus der Hilfe versteckt, s. DECISIONS.md)
+- Lesson-Adresse: genau EIN Positionsargument `KLASSE/FACH`
+  (z.B. `3AHWII/SWP1x`); `--lsid` nur als direkter Ausweg
+- Optionen: `--schuljahr-id`, `--datum (YYYY-MM-DD|heute)`,
+  `--von/--bis` (Zeiträume), `--testlauf/--ausfuehren`,
+  `--text-datei`, `--klassen-id`, `--termin/--thema-id`, `--datei`,
+  `--pause`; `--json` und `--lsid` bleiben (sprachneutral)
+- Flags sind deutsch, `dest`s (args-Attribute) bleiben englisch
+  (interner Code): z.B. `--schuljahr-id` mit `dest="school_year_id"`;
+  nur sichtbare Strings werden übersetzt, kein Reader-Umbau
+- Jede (Sub-)Gruppe bekommt `description` + `epilog` mit Beispielen —
+  `wu` ohne Argumente muss selbsterklärend sein
+
 ## Naming
 - Class names from WebUntis are UPPERCASE (e.g. `5AHWII`); git folder names are lowercase (e.g. `5ahwii/`). Always lowercase for git pathspec.
 - WebUntis subject short names: `SWP1x`, `SWP1y`, `WMC_1`, `INFIx`, `POS1`, `POS2` — prefix-matched against `SUBJECT_REPO_MAP`
 - Recording files: `{timestamp}_{domain_with_underscores}_{type}.jsonl`
 
 ## File Layout
-- `src/webuntis_agent/` — Python package (recorder, client, gitlog, cli + cli_{common,lehrstoff,students,absences,misc})
+- `src/webuntis_agent/` — Python-Paket: recorder, client, gitlog, cli
+  (Verdrahtung) + cli_common (Infra), cli_klasse, cli_lesson, cli_student,
+  cli_offen, cli_suche, cli_intern
 - `scripts/` — shell scripts (brave-debug.sh) and helper scripts (show-cookies.py)
 - `recordings/` — gitignored, contains session cookies and captured traffic
 - `docs/WEBUNTIS_API.md` — authoritative API reference
@@ -23,15 +40,15 @@ Follow these without question. Do not deviate unless explicitly told.
 - `_request_with_retry(..., headers=...)` MUST receive auth-dependent headers as a CALLABLE (not a dict) — after a transparent re-login the retry must pick up the NEW cookie/JWT; a static dict replays the dead session
 - HTTP method does NOT imply read/write in this API: `open-periods` and all JSON-RPC are POST but read-only; writes are `PUT classreg/lesson-topics`, `submitStudentLessonPeriodData`, `absencechecked` POST. Generic passthrough (`rpc`/`rest` CLI) is therefore write-capable by design (Variante B), method+body echoed to stderr
 - REST view routes live under `/WebUntis/api/rest/view/v1/...` (e.g. `app/data` = `/api/rest/view/v1/app/data`, NOT `/api/app/data`)
-- Person search: exact `search_timetable()` matches NO multi-word phrases and student displayNames are anonymized — use the shared `search_timetable_tokens()` fallback (tokenize + shortname heuristic, flagged via `searchNote`); only `students find` falls back to older years automatically, everything else keeps the current-year default; non-current hits must always be flagged NICHT AKTUELL (`current: false`)
+- Person search: exact `search_timetable()` matches NO multi-word phrases and student displayNames are anonymized — use the shared `search_timetable_tokens()` fallback (tokenize + shortname heuristic, flagged via `searchNote`); only `student` falls back to older years automatically, everything else keeps the current-year default; non-current hits must always be flagged NICHT AKTUELL (`current: false`)
 - JWT is auto-refreshed 60s before expiry
 - Login via `POST /WebUntis/j_spring_security_check` (form-encoded, not JSON); the 302 redirect is NOT a success signal — verify via the `anonymousMode` marker (see `client.login()`, docs/WEBUNTIS_API.md § login)
-- `batch-set` uses `--delay 1.0` (1 second between PUTs) to avoid IP rate-limiting
+- `offen eintragen` uses `--pause 1.0` (1 second between PUTs) to avoid IP rate-limiting
 - `id: 0` in PUT body creates a new topic; existing `id` updates
-- `--school-year-id` works before AND after the subcommand (subparser copies use `default=SUPPRESS`, subcommand wins on double use)
-- `fill-fixed --json`: JSON with the flag, human-readable lines without — in BOTH dry-run and write paths
+- `--schuljahr-id` works before AND after the subcommand (subparser copies use `default=SUPPRESS`, subcommand wins on double use)
+- `offen festtexte --json`: JSON with the flag, human-readable lines without — in BOTH testlauf and write paths
 - Export commands keep stdout paste-clean (TSV/JSON only); all diagnostics, warnings and notes go to stderr
-- Ambiguous `CLASS SUBJECT` lessons auto-pick the closest `lsId` to the reference date with a stderr label block (one `class/subject (date)` line per candidate)
+- Ambiguous `KLASSE/FACH` lessons auto-pick the closest `lsId` to the reference date with a stderr label block (one `class/subject (date)` line per candidate)
 
 ## Git-Log Analysis
 - `get_commits_for_class(class, date, repo_filter=repos)` — always pass `repo_filter` to scope to candidate repos

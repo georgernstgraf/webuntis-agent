@@ -1,6 +1,6 @@
-"""Pure grouping logic of the `lessons` command (no network)."""
+"""Pure grouping logic behind `klasse … faecher` (no network)."""
 
-from webuntis_agent.cli import _group_lesson_entries
+from webuntis_agent.cli_common import _group_lesson_entries
 
 E1 = {
     "periodId": 1, "topicId": 11, "class": "3BAIF", "classId": 4107,

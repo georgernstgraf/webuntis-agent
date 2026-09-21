@@ -62,7 +62,7 @@ purpose and maps to a CLI command where applicable.
 - Headers: `Cookie`, `Authorization: Bearer <jwt>`, `Tenant-Id`
 - Response: user (login account data), roles, permissions, tenant,
   timegrid, currentSchoolYear, ...
-- CLI: `webuntis-agent session status [--json]` (live session check;
+- CLI: `wu intern session status [--json]` (live session check;
   `--json` includes the full payload)
 
 ## Schoolyears
@@ -77,7 +77,7 @@ purpose and maps to a CLI command where applicable.
   target lesson date. There is NO arithmetic fallback (ids are not
   derivable — 21 = 2025/26, 24 = 2026/27, with a gap): when no range
   matches, `resolve_schoolyear_id()` raises.
-  Override with `--school-year-id`.
+   Override with `--schuljahr-id`.
 
 ## Lesson Topics (Lehrstoff)
 
@@ -90,7 +90,7 @@ purpose and maps to a CLI command where applicable.
   `X-Webuntis-Api-School-Year-Id: <id>`, `Tenant-Id: <id>`
 - Body: `{"teacherId":<person_id>,"filter":"TOPIC_OR_ABSENCE_OPEN","dateRange":{"start":"<yyyy-MM-dd>","end":"<yyyy-MM-dd>"}}`
 - Response: `{"periods":[{period:{id,classes,subject,teachers,dtRange,...},topicId,topicNeeded,absCheckNeeded,...}]}`
-- CLI: `webuntis-agent lehrstoff list --start <d> --end <d>`
+- CLI: `wu offen liste --von <d> --bis <d>`
 
 ### getLessonTopicMeta
 
@@ -106,7 +106,7 @@ purpose and maps to a CLI command where applicable.
 - Headers: as above
 - Response:
   `{"periodTopics":[{"period":{...},"topic":{"id","periodId","text","methodId","attachments":[]},"canSave":true}]}`
-- CLI: `webuntis-agent lehrstoff get --period <id>`
+- CLI: `wu lesson KLASSE/FACH lehrstoff zeigen --termin-id <id>`
 
 ### setLessonTopic (Lehrstoff eintragen)
 
@@ -119,7 +119,7 @@ purpose and maps to a CLI command where applicable.
 - Response (200): `{"topics":[{"id","periodId","text","methodId","attachments":[]}, ...]}` — returns all topics in the block
 - Note: `topic.id` comes from `getLessonTopic` (always an update when
   coming via Open Periods — the empty topic row already exists)
-- CLI: `webuntis-agent lehrstoff set --period <id> --topic-id <id> --text "<...>"`
+- CLI: `wu lesson KLASSE/FACH lehrstoff eintragen --termin-id <id> --thema-id <id> --text "<...>"`
 
 ## Workflows
 
@@ -133,54 +133,59 @@ purpose and maps to a CLI command where applicable.
 6. `setLessonTopic(periodId, topicId, text)` → PUT
 7. (later) `getOpenPeriods(...)` again to verify
 
-## CLI
+## CLI (`wu`; deutsch, Stand 2026-09-21 — alt→neu s. README)
 
-- `webuntis-agent lehrstoff status --start <d> --end <d> [--json]`
-  — quick overview of open periods grouped by subject/class
-- `webuntis-agent lehrstoff fill --start <d> --end <d> [--dry-run] [--file <json>]`
-  — fetch open periods + git diffs in one call; dry-run outputs JSON with
-  commits/diffs/proposedText per block; without dry-run submits a confirmed
-  batch JSON (--file)
-- `webuntis-agent lehrstoff verify --start <d> --end <d> [--json]`
-  — check which open periods truly have no topic text vs only missing absence check
-- `webuntis-agent lehrstoff fill-fixed --start <d> --end <d> [--dry-run]`
-  — fill SS/BESP periods with their fixed text (no git-log needed)
-- `webuntis-agent lehrstoff list --start <d> --end <d> [--json]`
-  — list open periods (JSON includes lessonDetailsUrl)
-- `webuntis-agent lehrstoff get --period <id>`
-  — show existing topic for a period
-- `webuntis-agent lehrstoff set --period <id> --text-file <path>`
-  — write single topic (UTF-8 safe via file)
-- `webuntis-agent lehrstoff batch-set --file <json> [--delay 1.0]`
-  — bulk write from JSON file
-- `webuntis-agent lehrstoff from-git --class-name <c> --subject <s> --date <d> [--dry-run]`
-  — derive text from GRG-* git logs + diffs
-- `webuntis-agent absences check --period <id>`
-  — check absences for one period
-- `webuntis-agent absences check-all --start <d> --end <d> [--delay 1.5]`
-  — auto-fetch open periods and check all absences
-- `webuntis-agent rpc <method> [params-json]`
-  — generic JSON-RPC passthrough (JSON output)
-- `webuntis-agent rest <path> [--method GET|POST|PUT|DELETE] [--data-json '<json>']`
-  — generic REST passthrough to `/WebUntis/api/<path>` (JSON output;
-  method+body echoed to stderr), e.g. `rest rest/view/v1/schoolyears`
-  or `rest rest/view/v1/classreg/open-periods --method POST --data-json '{...}'`.
-  Method does NOT imply read/write: POST `open-periods` is read-only,
-  `PUT lesson-topics` writes.
-- `webuntis-agent lesson info <lsId> [--json]`
-  — lesson diagnostics: lessonTeachers, lessonKlassen,
-  mainStudentgroupId, period span, per-klasse roster vs. attending
-- `webuntis-agent session status [--json]`
-  — session cache age + live check via `app/data` (exit 2 = dead session)
-- `webuntis-agent kv <class-id|class-name> [--json]`
-  — KV of a class
-- `webuntis-agent kv --student <name>`
-  — student -> class(es) (students/overview) -> KV per class
-- `--school-year-id <N>` overrides the auto-detected schoolyear
+- `wu offen status --von <d> --bis <d> [--json]`
+  — Überblick offener Perioden nach Fach/Klasse
+- `wu offen vorschlag --von <d> --bis <d>`
+  — offene Perioden + Git-Diffs in einem Call; gibt Vorschlag-JSON mit
+  Commits/Diffs/proposedText je Block aus (schreibt nichts; Texte
+  bestätigen, dann `offen eintragen`)
+- `wu offen verifizieren --von <d> --bis <d> [--json]`
+  — welche offenen Perioden wirklich ohne Lehrstoff-Text sind vs. nur
+  fehlende Absenzenprüfung
+- `wu offen festtexte --von <d> --bis <d> [--testlauf|--ausfuehren]`
+  — SS/BESP-Perioden mit Festtext füllen (ohne Git-Log)
+- `wu offen liste --von <d> --bis <d> [--json]`
+  — offene Perioden auflisten (JSON inkl. lessonDetailsUrl)
+- `wu offen eintragen --datei <json> [--pause 1.0]`
+  — bestätigte Lehrstoffe aus Datei schreiben (Bulk-Write)
+- `wu lesson KLASSE/FACH lehrstoff zeigen --termin-id <id>`
+  — eingetragenen Lehrstoff eines Termins zeigen
+- `wu lesson KLASSE/FACH lehrstoff eintragen --termin-id <id> --text-datei <path>`
+  — einzelnen Lehrstoff schreiben (UTF-8-sicher via Datei)
+- `wu lesson KLASSE/FACH lehrstoff aus-git --datum <d> [--testlauf|--ausfuehren]`
+  — Text aus GRG-*-Git-Logs + Diffs ableiten
+- `wu lesson KLASSE/FACH [roster] [--datum heute|<d>]`
+  — TSV-Teilnehmerliste des Termins
+- `wu lesson KLASSE/FACH matrix|termine|info`
+  — Anwesenheits-Matrix; Termine + Offen-Status; Lesson-Diagnostik
+  (lessonTeachers, lessonKlassen, mainStudentgroupId, Roster vs. anwesend)
+- `wu lesson KLASSE/FACH absenzen zeigen|pruefen`
+  — fehlt/gehalten je Schüler; Absenzenprüfung (Write)
+- `wu lesson KLASSE/FACH aufnehmen|anpassen …`
+  — Teilnehmer-Writes (Testlauf-Standard)
+- `wu klasse KLASSE` — Übersicht: KV, Fächer, Roster
+- `wu student NAME` — Treffer + Detail: Klasse, KV, Fächer, Absenzen
+  (tokenisierend, Auto-Fallback in ältere Jahre, NICHT AKTUELL markiert)
+- `wu search TEXT [--wortteile] [--alle-jahre] [--detail]`
+  — Klassen/Lehrer/Schüler suchen; --detail öffnet die Detail-Sicht
+- `wu offen pruefen --von <d> --bis <d> [--pause 1.5]`
+  — Absenzenprüfung über offene Perioden (Write)
+- `wu intern rpc <method> [params-json]`
+  — generischer JSON-RPC-Passthrough (JSON-Ausgabe)
+- `wu intern rest <path> [--method GET|POST|PUT|DELETE] [--data-json '<json>']`
+  — generischer REST-Passthrough nach `/WebUntis/api/<path>`
+  (JSON-Ausgabe; Methode+Body nach stderr), z.B.
+  `rest rest/view/v1/schoolyears`. Methode ≠ lesen/schreiben:
+  POST `open-periods` liest nur, `PUT lesson-topics` schreibt.
+- `wu intern session status [--json]`
+  — Session-Cache-Alter + Live-Check via `app/data` (Exit 2 = tote Session)
+- `--schuljahr-id <N>` übersteuert das automatisch erkannte Schuljahr
 
 ## Subject -> GRG repo mapping
 
-The `from-git` command and the `fill-open-periods` skill resolve which
+The `aus-git` command and the `fill-open-periods` skill resolve which
 GRG-* repositories to scan based on the WebUntis subject short name
 (`period.subject.el.nameShort`). The mapping lives in
 `src/webuntis_agent/client.py` as `SUBJECT_REPO_MAP` and is meant to be
@@ -199,7 +204,7 @@ the agent warns and skips those periods so the mapping can be extended.
 
 ## fill-open-periods workflow
 
-1. `webuntis-agent lehrstoff list --start <yyyy-MM-dd> --end <yyyy-MM-dd> --json`
+1. `wu offen liste --von <yyyy-MM-dd> --bis <yyyy-MM-dd> --json`
    — open periods as JSON
 2. For each period: resolve candidate repos from the subject mapping; if
    empty, warn and skip. Otherwise call
@@ -210,8 +215,8 @@ the agent warns and skips those periods so the mapping can be extended.
 4. Present a confirmation table (periodId | class | subject | date |
    proposed text). Group block periods (same `lsId`) together — one PUT
    updates the whole block.
-5. On user confirmation, `webuntis-agent lehrstoff set --period <id>
-   --topic-id <id> --text "<...>"` per period.
+5. On user confirmation, `wu lesson KLASSE/FACH lehrstoff eintragen
+   --termin-id <id> --thema-id <id> --text "<...>"` per period.
 
 ## Lesson Details URL (browser)
 
@@ -234,8 +239,8 @@ https://spengergasse.webuntis.com/timetable/class/lessonDetails/
 - `entityId` (query) — same as `classId`
 
 The CLI emits this URL in:
-- `lehrstoff list --json` — as the `lessonDetailsUrl` field per period
-- `lehrstoff batch-set --file <json>` — as `lessonDetailsUrl` in the
+- `offen liste --json` — as the `lessonDetailsUrl` field per period
+- `offen eintragen --datei <json>` — as `lessonDetailsUrl` in the
   result list, when the input JSON contains `classId`, `start`, `end`,
   `date` alongside `periodId`, `topicId`, `text`.
 
@@ -249,7 +254,7 @@ The CLI emits this URL in:
 - Response: HTML containing `<input type="hidden" name="_csrf" value="<token>">`
 - The token is extracted via regex and reused in the POST below.
 
-### checkAbsences (Abwesenheiten kontrolliert)
+### checkAbsences (Absenzenprüfung)
 
 - Purpose: mark absences as checked for a period (and its block partner)
 - Method: `POST /WebUntis/classregpage.do?request.preventCache=<timestamp>`
@@ -258,8 +263,9 @@ The CLI emits this URL in:
 - Body (form-encoded): `ttid=<periodId>&isBlockSelected=false&request.preventCache=<timestamp>&absencechecked=absencechecked&reload=0&_csrf=<csrf_token>`
 - Response (200): `{"args":[[<periodId>,<blockPartnerId>]],"method":"setAbsencesChecked","success":true}`
 - Note: No JWT needed — uses session cookie + CSRF only. Block partner is auto-marked.
-- CLI: `webuntis-agent absences check --period <id>`
-- CLI: `webuntis-agent absences check-all --start <d> --end <d> [--delay 1.5]`
+- CLI: `wu lesson KLASSE/FACH absenzen pruefen --termin-id <id>`
+  (einzelner Termin) bzw. `wu offen pruefen --von <d> --bis <d> [--pause 1.5]`
+  (alle prüfbedürftigen Perioden im Zeitraum)
 
 ## Discovered API Surface (SPA bundles)
 
@@ -330,7 +336,7 @@ REST `/v1/teachers`, `/v1/teachers/{id}` → 403 Access Denied;
 ANONYMIZED (`personId:-1, displayName:""`, school-level privacy
 setting). The weekly timetable elements carry SHORT names only.
 
-Working path (CLI: `search`, `kv`):
+Working path (CLI: `search`, `student`, `klasse … kv`):
 
 - `GET /WebUntis/api/rest/view/v1/timetable/search?q={text}&schoolyear={id}`
   (REST headers incl. Bearer JWT; schoolyear id via `getSchoolyears`,
@@ -346,12 +352,12 @@ Working path (CLI: `search`, `kv`):
   `students/overview` (`firstName`/`lastName`/`classInfo`). The search
   is schoolyear-sensitive: former students (e.g. id 12345 in SJ 21)
   vanish from current-year results.
-- CLI: `search <text>` (exact, current year default; `--fallback` for
-  the tokenizing merge via `search_timetable_tokens()`, `--all-years`
-  for older years, flagged NICHT AKTUELL), `students find <name>`
+- CLI: `search <text>` (exact, current year default; `--wortteile` for
+  the tokenizing merge via `search_timetable_tokens()`, `--alle-jahre`
+  for older years, flagged NICHT AKTUELL), `student <name>`
   (tokenizing + AUTOMATIC fallback to ≤3 older years, flagged
-  `current: false`; `--school-year-id` pins to one year),
-  `kv <class-id|class-name>`.
+  `current: false`; `--schuljahr-id` pins to one year),
+  `klasse <name> kv`.
 - Klassenvorstand: JSON-RPC `getKlassen` entries carry `teacher1`
   (optionally teacher2/3) = teacher id of the class teacher.
   Resolve id → short name via the class's weekly timetable elements
@@ -364,11 +370,11 @@ Working path (CLI: `search`, `kv`):
   association in that context; otherwise the real class id (e.g.
   4137 = 5BAIF).
 
-CLI commands: `search <text> [--fallback] [--all-years]`,
-`students find <name> [--class X]`, `kv <class-id|class-name>`,
-`students list --lsid X [--class-id Y] [--attending-only]`.
+CLI commands: `search <text> [--wortteile] [--alle-jahre] [--detail]`,
+`student <name> [--klasse X]`, `klasse <name> kv`,
+`lesson --lsid X matrix [--klassen-id Y] [--nur-anwesende]`.
 
-## Lessons listing (`lessons <class>`)
+## Lessons listing (`klasse <class> faecher`)
 
 - Source: `classreg/open-periods` (teacher-scoped), mapped via the
   shared `_open_period_entries` helper: per period id, topicId, class,
@@ -376,7 +382,7 @@ CLI commands: `search <text> [--fallback] [--all-years]`,
   "Graf (GRG)"), rooms (`el.name` + `orgEl` when replaced, e.g.
   "B3.07 (org A1.06)").
 - Output groups by lsId: subject short + full, period count, first/last
-  date, open count, teachers, rooms. `--full-names` resolves teacher
+  date, open count, teachers, rooms. `--volle-namen` resolves teacher
   shorts to "Lastname, Firstname (SHORT)" via timetable/search.
 - LIMITATION: open-periods has no "all lessons" filter — meta endpoint
   allows only `TOPIC_OR_ABSENCE_OPEN` (default), `ABSENCE_OPEN`,

@@ -19,13 +19,13 @@ git history, and submit each via the webuntis-agent CLI.
 
 ## Workflow
 
-1. **Run `lehrstoff fill --dry-run`** to fetch all open periods and
+1. **Run `offen vorschlag`** to fetch all open periods and
    pre-load git commits + diffs in one call:
 
    ```bash
    cd ~/repos/georgernstgraf/webuntis-agent
-   .venv/bin/python -m webuntis_agent.cli lehrstoff fill \
-       --start 2025-09-01 --end 2026-07-05 --dry-run
+   .venv/bin/python -m webuntis_agent.cli offen vorschlag \
+       --von 2025-09-01 --bis 2026-07-05
    ```
 
    This outputs a JSON object with two arrays:
@@ -80,20 +80,20 @@ git history, and submit each via the webuntis-agent CLI.
 5. **Submit** all entries:
 
    ```bash
-   .venv/bin/python -m webuntis_agent.cli lehrstoff batch-set \
-       --file /tmp/opencode/batch_<timestamp>.json --delay 1.0
+   .venv/bin/python -m webuntis_agent.cli offen eintragen \
+       --datei /tmp/opencode/batch_<timestamp>.json --pause 1.0
    ```
 
    - One PUT per entry; block partners are auto-updated by the server.
-   - `--delay 1.0` avoids triggering IP rate-limiting.
+   - `--pause 1.0` avoids triggering IP rate-limiting.
    - `topicId` null → server creates new topic (id=0).
    - `classId`/`start`/`end`/`date` enable `lessonDetailsUrl` output.
 
 6. **Check absences** for all remaining open periods:
 
    ```bash
-   .venv/bin/python -m webuntis_agent.cli absences check-all \
-       --start 2025-09-01 --end 2026-07-05 --delay 1.5
+   .venv/bin/python -m webuntis_agent.cli offen pruefen \
+       --von 2025-09-01 --bis 2026-07-05 --pause 1.5
    ```
 
 7. **Report** which periods were submitted, failed, or skipped. Include
@@ -102,16 +102,16 @@ git history, and submit each via the webuntis-agent CLI.
 
 ## Helper commands
 
-- `lehrstoff status --start ... --end ...` — quick overview (by subject/class)
-- `lehrstoff verify --start ... --end ...` — check which periods truly
+- `offen status --von ... --bis ...` — quick overview (by subject/class)
+- `offen verifizieren --von ... --bis ...` — check which periods truly
   have no text vs only missing absence check
-- `lehrstoff fill-fixed --start ... --end ...` — fill SS/BESP only
+- `offen festtexte --von ... --bis ...` — fill SS/BESP only
   (no git-log needed)
 
 ## Notes
 
-- The `fill --dry-run` call replaces the old manual workflow
-  (`list --json` + `from-git` per block). One call does it all.
+- The `vorschlag` call replaces the old manual workflow
+  (`liste --json` + per-block git lookup). One call does it all.
 - Block periods (same `lsId`) only need one PUT.
 - The `.env` file is gitignored and contains the WebUntis password —
   never print it or commit it.

@@ -168,15 +168,16 @@ def _make_client(args: argparse.Namespace):
 
 
 def _add_school_year_arg(sp):
-    """Allow --school-year-id AFTER the subcommand (both positions work).
+    """Allow --schuljahr-id AFTER the subcommand (both positions work).
 
     The top-level parser also defines it (before the subcommand). This
     copy uses default=SUPPRESS so it only overwrites when explicitly
     given — otherwise the global value is preserved.
     """
-    sp.add_argument("--school-year-id", type=int,
+    sp.add_argument("--schuljahr-id", dest="school_year_id", type=int,
                     default=argparse.SUPPRESS,
-                    help="pin schoolyear id (default: resolve via date range)")
+                    help="Schuljahr-ID festlegen "
+                         "(Standard: über Datumsbereich auflösen)")
 
 
 def _sleep_between(i: int, delay: float) -> None:
@@ -200,6 +201,19 @@ def _date_arg(s: str) -> str:
     # accept yyyy-MM-dd
     date.fromisoformat(s)
     return s
+
+
+def _split_klasse_fach(value: str) -> tuple[str, str]:
+    """Split a validated KLASSE/FACH address into (klasse, fach)."""
+    klasse, fach = value.split("/", 1)
+    return klasse.strip(), fach.strip()
+
+
+def _datum_arg(value: str) -> str:
+    """Resolve --datum: 'heute' -> today (YYYY-MM-DD), else validated date."""
+    if value.lower() == "heute":
+        return date.today().isoformat()
+    return _date_arg(value)
 
 
 def _lesson_details_url(host: str, period_id: int, class_id: int,
@@ -244,7 +258,7 @@ def _open_period_entries(c: Client, sy: int, start: str, end: str,
                          filter_: str = "TOPIC_OR_ABSENCE_OPEN") -> list[dict]:
     """Fetch open periods and build enriched, flat period entries.
 
-    Shared by `lehrstoff list`, `lessons` and the lsId resolver.
+    Shared by `offen liste`, `klasse faecher` and the lsId resolver.
     """
     data = c.get_open_periods(start, end, filter_=filter_, school_year_id=sy)
     raw = data.get("periods", [])
@@ -358,33 +372,34 @@ def _fetch_open_periods(args: argparse.Namespace):
 def _no_open_periods(args: argparse.Namespace) -> int:
     """Shared empty-result output for open-period commands (single source).
 
-    Used by `lehrstoff list/status/fill/verify/fill-fixed`: JSON callers
+    Used by `offen liste/status/verifizieren/vorschlag/festtexte`: JSON callers
     get `[]`, text callers `(no open periods)`.
     """
-    print("[]" if args.json else "(no open periods)")
+    print("[]" if args.json else "(keine offenen Perioden)")
     return 0
 
 
 def _read_text_arg(args: argparse.Namespace) -> str:
-    """Resolve --text / --text-file / --text-stdin (exactly one required)."""
+    """Resolve --text / --text-datei / --text-stdin (exactly one required)."""
     sources = [
         ("--text", getattr(args, "text", None)),
-        ("--text-file", getattr(args, "text_file", None)),
+        ("--text-datei", getattr(args, "text_file", None)),
     ]
     if getattr(args, "text_stdin", False):
         sources.append(("--text-stdin", True))
     present = [(n, v) for n, v in sources if v]
     if not present:
-        raise SystemExit("error: one of --text / --text-file / --text-stdin required")
+        raise SystemExit("Fehler: genau eine Quelle nötig: "
+                         "--text / --text-datei / --text-stdin")
     if len(present) > 1:
         raise SystemExit(
-            f"error: only one of --text / --text-file / --text-stdin allowed "
-            f"(got {[n for n, _ in present]})"
+            "Fehler: nur eine Quelle erlaubt "
+            f"(angegeben: {[n for n, _ in present]})"
         )
     name, _ = present[0]
     if name == "--text":
         return args.text
-    if name == "--text-file":
+    if name == "--text-datei":
         from pathlib import Path
         return Path(args.text_file).read_text(encoding="utf-8")
     import sys
@@ -395,7 +410,7 @@ def _resolve_topic_id(c, sy: int, period_id: int,
                       topic_id: int | None) -> int:
     """Resolve a missing topicId via GET lesson-topic (single source of truth).
 
-    Shared by `lehrstoff set` and `_submit_topic_entries`: returns the
+    Shared by `lehrstoff eintragen` and `_submit_topic_entries`: returns the
     given id when present, otherwise the existing row id, or 0 to create
     a new topic row (server creates it on PUT).
     """
@@ -413,17 +428,17 @@ def _submit_topic_entries(c, sy: int, items: list[dict],
                           url_fields: bool = False) -> list[dict]:
     """Shared write loop for lehrstoff topic submissions.
 
-    Single source of truth for `lehrstoff batch-set`, `lehrstoff fill
-    --no-dry-run` and `lehrstoff fill-fixed`: per item, resolve a
+    Single source of truth for `offen eintragen`, `offen festtexte`
+    (write path): per item, resolve a
     missing topicId via `_resolve_topic_id` (GET lesson-topic; id=0
     creates a new topic row), PUT the topic, sleep `delay` between PUTs
     (rate-limit). With `url_fields`, items may carry classId/start/end/
     date to enrich the result with a lessonDetailsUrl.
 
-    NOTE (url_fields decision, #14): only `batch-set` passes
-    `url_fields=True`. `fill`/`fill-fixed` intentionally do not enrich
+    NOTE (url_fields decision, #14): only `offen eintragen` passes
+    `url_fields=True`. `festtexte` intentionally does not enrich
     URLs — the pre-refactor code had no URLs there either (no
-    regression); `batch-set` remains the single URL producer.
+    regression); `eintragen` remains the single URL producer.
     """
     results: list[dict] = []
     for i, raw in enumerate(items):

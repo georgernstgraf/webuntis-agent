@@ -1,464 +1,596 @@
-"""CLI entry point for webuntis-agent."""
+"""CLI-Einstieg für webuntis-agent (Domain-CLI, s. DECISIONS.md).
+
+Top-Level: klasse, lesson, student, offen, search, intern.
+Eine Lesson wird immer als KLASSE/FACH adressiert (z.B. 3AHWII/SWP1x).
+"""
 
 from __future__ import annotations
 
 import argparse
 import sys
 
-# Backward-compat re-exports (split into cli_* modules, #15).
-# `from webuntis_agent.cli import <cmd_*>` keeps working.
-from webuntis_agent.cli_absences import (
-    cmd_batch_check_absences,
-    cmd_check_absences,
-    cmd_check_all_absences,
-)
-from webuntis_agent.cli_common import (
-    _load_env,
-    _session_path,
-    _make_client,
-    _add_school_year_arg,
-    _sleep_between,
-    _fixed_text,
-    _date_arg,
-    _lesson_details_url,
-    _block_bounds,
-    _base_period_fields,
-    _open_period_entries,
-    _group_lesson_entries,
-    _period_summary,
-    _fetch_open_periods,
-    _no_open_periods,
-    _read_text_arg,
-    _resolve_topic_id,
-    _submit_topic_entries,
-    _format_search_hit,
-    _annotate_search_hits,
-)
-from webuntis_agent.cli_lehrstoff import (
-    cmd_lessons,
-    cmd_lehrstoff_list,
-    cmd_lehrstoff_get,
-    cmd_lehrstoff_set,
-    cmd_lehrstoff_batch_set,
-    cmd_lehrstoff_from_git,
-    cmd_lehrstoff_status,
-    cmd_lehrstoff_fill,
-    cmd_lehrstoff_verify,
-    cmd_lehrstoff_fill_fixed,
-)
-from webuntis_agent.cli_misc import (
+from webuntis_agent.cli_intern import (
     cmd_login,
     cmd_logout,
-    cmd_rpc,
     cmd_rest,
-    cmd_lesson_info,
+    cmd_rpc,
     cmd_session_status,
-    cmd_search,
-    _kv_for_class,
-    cmd_kv,
 )
-from webuntis_agent.cli_students import (
-    _teacher_names_for_class,
-    _pick_closest_lesson,
-    _resolve_lesson_from_class_subject,
-    _lesson_label_for_lsid,
-    _resolve_roster_date,
-    cmd_students_list,
-    cmd_students_find,
-    _build_students_payload,
-    _finish_students_command,
-    cmd_students_add,
-    cmd_students_edit,
-    cmd_students_roster,
+from webuntis_agent.cli_klasse import (
+    cmd_klasse,
+    cmd_klasse_faecher,
+    cmd_klasse_kv,
+    cmd_klasse_roster,
 )
+from webuntis_agent.cli_common import (
+    _add_school_year_arg,
+    _date_arg,
+    _datum_arg,
+)
+from webuntis_agent.cli_lesson import (
+    cmd_absenzen_pruefen,
+    cmd_absenzen_zeigen,
+    cmd_lehrstoff_aus_git,
+    cmd_lehrstoff_eintragen,
+    cmd_lehrstoff_zeigen,
+    cmd_lesson_anpassen,
+    cmd_lesson_aufnehmen,
+    cmd_lesson_info,
+    cmd_lesson_matrix,
+    cmd_lesson_roster,
+    cmd_lesson_termine,
+)
+from webuntis_agent.cli_offen import (
+    cmd_offen_eintragen,
+    cmd_offen_festtexte,
+    cmd_offen_liste,
+    cmd_offen_pruefen,
+    cmd_offen_status,
+    cmd_offen_verifizieren,
+    cmd_offen_vorschlag,
+)
+from webuntis_agent.cli_student import cmd_student
+from webuntis_agent.cli_suche import cmd_search
+from webuntis_agent.client import UnknownLessonError
 
-__all__ = [
-    "_load_env",
-    "_session_path",
-    "_make_client",
-    "_add_school_year_arg",
-    "_sleep_between",
-    "_fixed_text",
-    "_date_arg",
-    "_lesson_details_url",
-    "_block_bounds",
-    "_base_period_fields",
-    "_open_period_entries",
-    "_group_lesson_entries",
-    "_period_summary",
-    "_fetch_open_periods",
-    "_no_open_periods",
-    "_read_text_arg",
-    "_resolve_topic_id",
-    "_submit_topic_entries",
-    "_format_search_hit",
-    "_annotate_search_hits",
-    "cmd_lessons",
-    "cmd_lehrstoff_list",
-    "cmd_lehrstoff_get",
-    "cmd_lehrstoff_set",
-    "cmd_lehrstoff_batch_set",
-    "cmd_lehrstoff_from_git",
-    "cmd_lehrstoff_status",
-    "cmd_lehrstoff_fill",
-    "cmd_lehrstoff_verify",
-    "cmd_lehrstoff_fill_fixed",
-    "_teacher_names_for_class",
-    "_pick_closest_lesson",
-    "_resolve_lesson_from_class_subject",
-    "_lesson_label_for_lsid",
-    "_resolve_roster_date",
-    "cmd_students_list",
-    "cmd_students_find",
-    "_build_students_payload",
-    "_finish_students_command",
-    "cmd_students_add",
-    "cmd_students_edit",
-    "cmd_students_roster",
-    "cmd_check_absences",
-    "cmd_batch_check_absences",
-    "cmd_check_all_absences",
-    "cmd_login",
-    "cmd_logout",
-    "cmd_rpc",
-    "cmd_rest",
-    "cmd_lesson_info",
-    "cmd_session_status",
-    "cmd_search",
-    "_kv_for_class",
-    "cmd_kv",
-    "main",
-]
+
+def _add_testlauf(sp):
+    """--testlauf (Standard) / --ausfuehren (wirklich schreiben)."""
+    sp.add_argument("--testlauf", dest="testlauf", action="store_true",
+                    default=True,
+                    help="nur zeigen/protokollieren, nichts schreiben "
+                         "(Standard)")
+    sp.add_argument("--ausfuehren", dest="testlauf", action="store_false",
+                    help="wirklich schreiben (Write)")
+
+
+def _add_von_bis(sp, required=True):
+    """Zeitraum --von/--bis (YYYY-MM-DD)."""
+    sp.add_argument("--von", dest="start", type=_date_arg, required=required,
+                    help="Zeitraum-Start (JJJJ-MM-TT)")
+    sp.add_argument("--bis", dest="end", type=_date_arg, required=required,
+                    help="Zeitraum-Ende (JJJJ-MM-TT)")
+
+
+def _add_json(sp):
+    sp.add_argument("--json", action="store_true",
+                    help="strukturierte JSON-Ausgabe (für Weiterverarbeitung)")
+
+
+_LESSON_VALUE_OPTS = frozenset({
+    "--lsid", "--datum", "--klassen-id", "--schueler-id", "--schueler-name",
+    "--aufnehmen-id", "--entfernen-id", "--termin-id", "--thema-id",
+    "--text", "--text-datei", "--ausgabe", "--von", "--bis", "--pause",
+    "--datei", "--schuljahr-id",
+})
+
+
+def _extract_adresse(argv: list[str]) -> tuple[list[str], str | None]:
+    """KLASSE/FACH-Token aus `lesson ...` entfernen und zurückgeben.
+
+    Nur wenn das Top-Level-Kommando `lesson` ist. Das erste reine
+    Positions-Token mit `/` (beidseitig nicht leer) ist die Adresse —
+    Unterbefehle enthalten nie `/`, Options-Werte werden übersprungen.
+    """
+    args = list(argv)
+    i = 0
+    while i < len(args) and args[i].startswith("-"):
+        i += 1 if "=" in args[i] else 2
+    if i >= len(args) or args[i] != "lesson":
+        return args, None
+    rest = args[:i + 1]
+    adresse = None
+    j = i + 1
+    while j < len(args):
+        tok = args[j]
+        if tok in _LESSON_VALUE_OPTS:
+            rest.append(tok)
+            if j + 1 < len(args):
+                rest.append(args[j + 1])
+            j += 2
+            continue
+        if not tok.startswith("-") and adresse is None:
+            teile = tok.split("/")
+            if len(teile) == 2 and all(t.strip() for t in teile):
+                adresse = tok
+                j += 1
+                continue
+        rest.append(tok)
+        j += 1
+    return rest, adresse
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(prog="webuntis-agent")
-    p.add_argument("--school-year-id", type=int, default=None)
+    p = argparse.ArgumentParser(
+        prog="wu",
+        description="WebUntis-Agent: Klassenbuch-Arbeit vom Terminal aus — "
+                    "Roster, Lehrstoff und Absenzen für den eigenen Unterricht.\n\n"
+                    "Domain-Objekte: KLASSE (z.B. 3AHWII), LESSON als "
+                    "KLASSE/FACH (z.B. 3AHWII/SWP1x), STUDENT per Name.\n"
+                    "Alle Ausgaben sind deutsch; --json liefert maschinenlesbare "
+                    "Strukturen (Schlüssel englisch).",
+        epilog="Beispiele:\n"
+               "  wu klasse 3AHWII               Übersicht: KV, Fächer, Roster\n"
+               "  wu lesson 3AHWII/SWP1x         Roster des nächsten Termins\n"
+               "  wu student \"Erika Muster\"       alles zu einer Schülerin\n"
+               "  wu offen status --von 2026-09-01 --bis 2026-09-30\n"
+               "  wu search Muster --detail",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--schuljahr-id", dest="school_year_id", type=int,
+                   default=None,
+                   help="Schuljahr-ID festlegen "
+                        "(Standard: über Datumsbereich auflösen)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    rec = sub.add_parser("record", help="run the CDP recorder")
-    rec.add_argument("--host", default="localhost",
-                     help="CDP host of the browser (default localhost)")
-    rec.add_argument("--port", type=int, default=9222,
-                     help="CDP port of the browser (default 9222)")
-    rec.add_argument("--domain", default="spengergasse.webuntis.com",
-                     help="WebUntis domain to filter requests on")
+    # -- klasse --
+    kla = sub.add_parser(
+        "klasse", help="Klasse: Übersicht, Roster, Fächer, KV",
+        description="Alles zu einer Klasse (z.B. 3AHWII). Ohne Unterbefehl: "
+                    "Klassen-Übersicht mit Klassenvorstand, eigenen Fächern "
+                    "und Roster.",
+        epilog="Beispiele:\n"
+               "  wu klasse 3AHWII\n"
+               "  wu klasse 3AHWII roster --ohne-kopf\n"
+               "  wu klasse 3AHWII faecher --fach SWP",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    kla.add_argument("klassenname", help="Klassenname, z.B. 3AHWII")
+    kla.add_argument("--fach", default=None,
+                     help="nur dieses Fach (nur Übersicht/faecher)")
+    _add_von_bis(kla, required=False)
+    _add_json(kla)
+    _add_school_year_arg(kla)
+    kla_sub = kla.add_subparsers(dest="sub")
+    kla_roster = kla_sub.add_parser(
+        "roster", help="Schülerliste der Klasse (TSV, Excel-einfügbare)",
+        description="Roster der Klasse aus dem aktuellen Roster — volle "
+                    "Namen, sortiert, als TSV (Name<TAB>Klasse).")
+    kla_roster.add_argument("--ohne-kopf", dest="ohne_kopf",
+                            action="store_true",
+                            help="Kopfzeile 'Name<TAB>Klasse' weglassen")
+    _add_json(kla_roster)
+    _add_school_year_arg(kla_roster)
+    kla_roster.set_defaults(func=cmd_klasse_roster)
+    kla_faecher = kla_sub.add_parser(
+        "faecher", help="eigene Lessons (Fächer) der Klasse auflisten",
+        description="Eigene Lessons der Klasse, gruppiert je Lesson (lsId) "
+                    "mit Lehrern, Räumen und Zeitraum. Quelle: offene "
+                    "Perioden im Zeitraum (Standard: Schuljahr bis heute).")
+    kla_faecher.add_argument("--fach", default=None,
+                             help="nur Fächer mit diesem Präfix, z.B. SWP")
+    kla_faecher.add_argument("--volle-namen", dest="volle_namen",
+                             action="store_true",
+                             help="Lehrer-Kürzel zu Vollnamen auflösen")
+    _add_von_bis(kla_faecher, required=False)
+    _add_json(kla_faecher)
+    _add_school_year_arg(kla_faecher)
+    kla_faecher.set_defaults(func=cmd_klasse_faecher)
+    kla_kv = kla_sub.add_parser(
+        "kv", help="Klassenvorstand der Klasse anzeigen")
+    _add_json(kla_kv)
+    _add_school_year_arg(kla_kv)
+    kla_kv.set_defaults(func=cmd_klasse_kv)
+    kla.set_defaults(func=cmd_klasse)
 
-    sub.add_parser(
-        "login",
-        help="log in once and cache the session for all following calls")
-    login_parser = sub.choices["login"]
+    # -- lesson --
+    les = sub.add_parser(
+        "lesson",
+        help="Lesson (KLASSE/FACH): Roster, Termine, Lehrstoff, Absenzen",
+        usage="wu lesson KLASSE/FACH [--lsid LSID] [--datum DATUM] "
+              "[--ohne-kopf] [--json] [--schuljahr-id ID]\n"
+              "       wu lesson KLASSE/FACH "
+              "{roster,matrix,termine,info,aufnehmen,anpassen,\n"
+              "                                lehrstoff,absenzen} [...]",
+        description="Alles zu einer Lesson — einem Fach innerhalb einer "
+                    "Klasse, adressiert als KLASSE/FACH (z.B. 3AHWII/SWP1x). "
+                    "Ohne Unterbefehl: Roster (Teilnehmerliste) des Termins "
+                    "zu --datum.",
+        epilog="Beispiele:\n"
+               "  wu lesson 3AHWII/SWP1x\n"
+               "  wu lesson 3AHWII/SWP1x --datum 2026-09-22\n"
+               "  wu lesson 3AHWII/SWP1x termine --mit-lehrstoff\n"
+               "  wu lesson 3AHWII/SWP1x lehrstoff zeigen --termin-id 6055348\n"
+               "  wu lesson 3AHWII/SWP1x absenzen zeigen",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    # KLASSE/FACH wird in _extract_adresse vorab herausgezogen (ein
+    # nargs-Positionsargument vor Subparsern deutet argparse sonst als
+    # Unterbefehl) — hier kein Positionsargument, args.klasse_fach wird
+    # in main() gesetzt.
+    les.add_argument("--lsid", type=int, default=None,
+                     help="Lesson-ID direkt (statt KLASSE/FACH aufzulösen)")
+    les.add_argument("--datum", dest="datum", type=_datum_arg,
+                     default="heute",
+                     help="Termin-Tag: JJJJ-MM-TT oder 'heute' (Standard)")
+    les.add_argument("--ohne-kopf", dest="ohne_kopf", action="store_true",
+                     help="Kopfzeile 'Name<TAB>Klasse' weglassen "
+                          "(Default/roster)")
+    _add_json(les)
+    _add_school_year_arg(les)
+    les_sub = les.add_subparsers(dest="sub")
+    les_roster = les_sub.add_parser(
+        "roster",
+        help="Teilnehmerliste des Termins (TSV, Excel-einfügbare)",
+        description="Excel-einfügbare TSV-Teilnehmerliste für den "
+                    "Lesson-Termin zu --datum. Ohne Termin an diesem Tag: "
+                    "nächster Termin (sonst letzter gehaltener) mit Hinweis.")
+    les_roster.add_argument("--datum", dest="datum", type=_datum_arg,
+                            default=argparse.SUPPRESS,
+                            help="Termin-Tag: JJJJ-MM-TT oder 'heute'")
+    les_roster.add_argument("--ohne-kopf", dest="ohne_kopf",
+                            action="store_true",
+                            help="Kopfzeile 'Name<TAB>Klasse' weglassen")
+    _add_json(les_roster)
+    _add_school_year_arg(les_roster)
+    les_roster.set_defaults(func=cmd_lesson_roster)
+    les.set_defaults(func=cmd_lesson_roster)
+    les_matrix = les_sub.add_parser(
+        "matrix", help="Anwesenheits-Matrix: Termine je Schüler",
+        description="Anwesenheits-Matrix der Lesson: je Schüler alle "
+                    "besuchten Termine. Textansicht zeigt nur Anwesende "
+                    "(--alle für alle); --json immer alles.")
+    les_matrix.add_argument("--klassen-id", dest="klassen_id", type=int,
+                            default=None,
+                            help="nur Schüler dieser Klassen-ID")
+    les_matrix.add_argument("--nur-anwesende", dest="nur_anwesende",
+                            action="store_true",
+                            help="nur Schüler mit Anwesenheit")
+    les_matrix.add_argument("--alle", action="store_true",
+                            help="Textansicht: alle Schüler zeigen")
+    _add_json(les_matrix)
+    _add_school_year_arg(les_matrix)
+    les_matrix.set_defaults(func=cmd_lesson_matrix)
+    les_termine = les_sub.add_parser(
+        "termine", help="alle Termine der Lesson mit Offen-Status",
+        description="Alle Termine der Lesson: Offen-Status (Lehrstoff fehlt "
+                    "oder Absenzen ungeprüft) vs. erledigt. Mit "
+                    "--mit-lehrstoff zusätzlich die eingetragenen Texte "
+                    "(gedrosselt, je ein Call pro Termin).")
+    _add_von_bis(les_termine, required=False)
+    les_termine.add_argument("--mit-lehrstoff", dest="mit_lehrstoff",
+                             action="store_true",
+                             help="eingetragene Lehrstoff-Texte mitladen")
+    les_termine.add_argument("--pause", dest="pause", type=float, default=1.0,
+                             help="Sekunden zwischen Calls (Standard 1.0)")
+    _add_json(les_termine)
+    _add_school_year_arg(les_termine)
+    les_termine.set_defaults(func=cmd_lesson_termine)
+    les_info = les_sub.add_parser(
+        "info", help="Lesson-Diagnostik: Lehrer, Klassen, Verteilung",
+        description="Diagnostik: Lehrer, Klassen, mainStudentgroupId und "
+                    "Roster- vs. Anwesenheits-Verteilung je Klasse.")
+    _add_json(les_info)
+    _add_school_year_arg(les_info)
+    les_info.set_defaults(func=cmd_lesson_info)
+    les_aufnehmen = les_sub.add_parser(
+        "aufnehmen", help="Schüler in die Lesson aufnehmen (Testlauf)",
+        description="Schüler auf alle Lesson-Termine setzen und Payload "
+                    "schicken. --testlauf (Standard) schickt NICHT ab; "
+                    "mit --ausfuehren wirklich aufnehmen.")
+    les_aufnehmen.add_argument("--klassen-id", dest="klassen_id", type=int,
+                               required=True,
+                               help="Klassen-ID der Lesson-Heimatklasse "
+                                    "(deren Schüler bleiben unverändert)")
+    les_aufnehmen.add_argument("--schueler-id", dest="schueler_id", type=int,
+                               default=None,
+                               help="Schüler-ID (alternativ --schueler-name)")
+    les_aufnehmen.add_argument("--schueler-name", dest="schueler_name",
+                               default=None,
+                               help="Namenssuche (braucht genau 1 Treffer)")
+    les_aufnehmen.add_argument("--ausgabe", dest="ausgabe", default=None,
+                               help="Submit-Payload als JSON in Datei schreiben")
+    les_aufnehmen.add_argument("--details", dest="details",
+                               action="store_true",
+                               help="Payload in der Testlauf-Ausgabe zeigen")
+    _add_testlauf(les_aufnehmen)
+    _add_school_year_arg(les_aufnehmen)
+    les_aufnehmen.set_defaults(func=cmd_lesson_aufnehmen)
+    les_anpassen = les_sub.add_parser(
+        "anpassen", help="Lesson-Anwesenheit ändern: +/- Schüler (Testlauf)",
+        description="Aufnehmen und/oder entfernen in einem Write (volle "
+                    "Edit-Semantik: Entfernte verlieren alle Termine). "
+                    "--testlauf (Standard) schickt NICHT ab.")
+    les_anpassen.add_argument("--klassen-id", dest="klassen_id", type=int,
+                              required=True,
+                              help="Klassen-ID der Lesson-Heimatklasse")
+    les_anpassen.add_argument("--aufnehmen-id", dest="aufnehmen_id",
+                              type=int, action="append", default=None,
+                              help="aufzunehmende Schüler-ID (wiederholbar)")
+    les_anpassen.add_argument("--entfernen-id", dest="entfernen_id",
+                              type=int, action="append", default=None,
+                              help="zu entfernende Schüler-ID (wiederholbar)")
+    les_anpassen.add_argument("--ausgabe", dest="ausgabe", default=None,
+                              help="Submit-Payload als JSON in Datei schreiben")
+    les_anpassen.add_argument("--details", dest="details",
+                              action="store_true",
+                              help="Payload in der Testlauf-Ausgabe zeigen")
+    _add_testlauf(les_anpassen)
+    _add_school_year_arg(les_anpassen)
+    les_anpassen.set_defaults(func=cmd_lesson_anpassen)
+    les_lehr = les_sub.add_parser(
+        "lehrstoff", help="Lehrstoff eines Termins: zeigen/eintragen/aus-git",
+        description="Der Lehrstoff gehört zur Lesson: zu jedem Termin gibt "
+                    "es den entsprechenden Lehrstoff-Eintrag.")
+    les_lehr_sub = les_lehr.add_subparsers(dest="sub2", required=True)
+    les_lehr_zeigen = les_lehr_sub.add_parser(
+        "zeigen", help="eingetragenen Lehrstoff eines Termins anzeigen")
+    les_lehr_zeigen.add_argument("--termin-id", dest="termin", type=int,
+                                 required=True, help="Termin-ID (periodId)")
+    _add_school_year_arg(les_lehr_zeigen)
+    les_lehr_zeigen.set_defaults(func=cmd_lehrstoff_zeigen)
+    les_lehr_eintragen = les_lehr_sub.add_parser(
+        "eintragen", help="Lehrstoff für einen Termin eintragen (Write)",
+        description="Einzelner Lehrstoff-Write. Quelle: --text (Achtung: "
+                    "Shell/Umlaute — lieber --text-datei), --text-datei oder "
+                    "--text-stdin.")
+    les_lehr_eintragen.add_argument("--termin-id", dest="termin", type=int,
+                                    required=True,
+                                    help="Termin-ID (periodId)")
+    les_lehr_eintragen.add_argument("--thema-id", dest="thema", type=int,
+                                    default=None,
+                                    help="Lehrstoff-Zeilen-ID (Standard: "
+                                         "auflösen, 0 = neu anlegen)")
+    les_lehr_eintragen.add_argument("--text", default=None,
+                                    help="Lehrstoff-Text (Umlaute: Datei!)")
+    les_lehr_eintragen.add_argument("--text-datei", dest="text_file",
+                                    default=None, help="Text aus Datei lesen")
+    les_lehr_eintragen.add_argument("--text-stdin", dest="text_stdin",
+                                    action="store_true",
+                                    help="Text von stdin lesen")
+    _add_school_year_arg(les_lehr_eintragen)
+    les_lehr_eintragen.set_defaults(func=cmd_lehrstoff_eintragen)
+    les_lehr_git = les_lehr_sub.add_parser(
+        "aus-git", help="Lehrstoff-Text aus GRG-*-Git-Logs ableiten",
+        description="Text aus Unterrichts-Repos ableiten: Commits + Diffs "
+                    "zeigen (--testlauf, Standard) oder mit --ausfuehren "
+                    "(braucht --termin-id/--thema-id) direkt eintragen.")
+    les_lehr_git.add_argument("--datum", dest="datum", type=_datum_arg,
+                              required=True,
+                              help="Unterrichts-Datum (JJJJ-MM-TT oder 'heute')")
+    les_lehr_git.add_argument("--termin-id", dest="termin", type=int,
+                              default=None, help="Termin-ID (nur --ausfuehren)")
+    les_lehr_git.add_argument("--thema-id", dest="thema", type=int,
+                              default=None,
+                              help="Lehrstoff-Zeilen-ID (nur --ausfuehren)")
+    _add_testlauf(les_lehr_git)
+    _add_school_year_arg(les_lehr_git)
+    les_lehr_git.set_defaults(func=cmd_lehrstoff_aus_git)
+    les_abs = les_sub.add_parser(
+        "absenzen", help="Absenzen der Lesson: Übersicht/Prüfung",
+        description="Grobe Absenz-Zusammenfassung je Schüler (fehlende vs. "
+                    "gehaltene Stunden, nur bis heute) oder Absenzenprüfung "
+                    "durchführen (Write).")
+    les_abs_sub = les_abs.add_subparsers(dest="sub2", required=True)
+    les_abs_zeigen = les_abs_sub.add_parser(
+        "zeigen", help="fehlende vs. gehaltene Stunden je Schüler")
+    les_abs_zeigen.add_argument("--nur-fehlende", dest="nur_fehlende",
+                                action="store_true",
+                                help="nur Schüler mit Fehlstunden")
+    les_abs_zeigen.add_argument("--alle", action="store_true",
+                                help="alle Schüler der Matrix zeigen "
+                                     "(auch nie Anwesende)")
+    _add_json(les_abs_zeigen)
+    _add_school_year_arg(les_abs_zeigen)
+    les_abs_zeigen.set_defaults(func=cmd_absenzen_zeigen)
+    les_abs_pruefen = les_abs_sub.add_parser(
+        "pruefen", help="Absenzenprüfung durchführen (Write)",
+        description="Mit --termin-id: genau dieser Termin. Ohne: alle "
+                    "ungeprüften Termine dieser Lesson im Zeitraum "
+                    "(Standard: Schuljahresstart bis heute).")
+    les_abs_pruefen.add_argument("--termin-id", dest="termin", type=int,
+                                 default=None,
+                                 help="einzelner Termin (periodId)")
+    _add_von_bis(les_abs_pruefen, required=False)
+    les_abs_pruefen.add_argument("--pause", dest="pause", type=float,
+                                 default=1.0,
+                                 help="Sekunden zwischen Calls (Standard 1.0)")
+    _add_school_year_arg(les_abs_pruefen)
+    les_abs_pruefen.set_defaults(func=cmd_absenzen_pruefen)
+
+    # -- student --
+    stu = sub.add_parser(
+        "student", help="Schüler: Treffer, Klasse, KV, Fächer, Absenzen",
+        description="Alles zu einem Schüler: Suche (tokenisierend, mit "
+                    "Fallback in ältere Schuljahre), Klasse, Klassenvorstand, "
+                    "belegte/nicht belegte Fächer und Absenz-Übersicht. "
+                    "Treffer aus älteren Jahren sind NICHT AKTUELL markiert.",
+        epilog="Beispiele:\n"
+               "  wu student \"Erika Muster\"\n"
+               "  wu student Muster --klasse 5BAIF --json",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    stu.add_argument("name", help="Name, z.B. 'Erika Muster'")
+    stu.add_argument("--klasse", dest="klasse", default=None,
+                     help="auf Klasse filtern, z.B. 5BAIF")
+    stu.add_argument("--wortteile", dest="wortteile", action="store_true",
+                     help="Vor-/Nachname einzeln suchen und zusammenführen")
+    stu.add_argument("--alle-jahre", dest="alle_jahre", action="store_true",
+                     help="zusätzlich ältere Schuljahre durchsuchen "
+                          "(NICHT AKTUELL markiert)")
+    _add_json(stu)
+    _add_school_year_arg(stu)
+    stu.set_defaults(func=cmd_student)
+
+    # -- offen --
+    off = sub.add_parser(
+        "offen", help="Arbeitsvorrat: offene Perioden (Lehrstoff/Absenzen)",
+        description="Offene Perioden schulden noch Lehrstoff oder "
+                    "Absenzenprüfung. Arbeitsvorrat im Zeitraum --von/--bis: "
+                    "auflisten, Überblick, verifizieren, Vorschläge aus Git "
+                    "bauen, bestätigte Texte eintragen, Festtexte füllen, "
+                    "Absenzen prüfen.",
+        epilog="Beispiele:\n"
+               "  wu offen status --von 2026-09-01 --bis 2026-09-30\n"
+               "  wu offen vorschlag --von 2026-09-01 --bis 2026-09-30 > vorschlag.json\n"
+               "  wu offen eintragen --datei batch.json\n"
+               "  wu offen pruefen --von 2026-09-01 --bis 2026-09-30",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    off_sub = off.add_subparsers(dest="sub", required=True)
+    off_liste = off_sub.add_parser(
+        "liste", help="offene Perioden im Zeitraum auflisten")
+    _add_von_bis(off_liste)
+    _add_json(off_liste)
+    _add_school_year_arg(off_liste)
+    off_liste.set_defaults(func=cmd_offen_liste)
+    off_status = off_sub.add_parser(
+        "status", help="Überblick: Zählung nach Fach und Klasse+Fach")
+    _add_von_bis(off_status)
+    _add_json(off_status)
+    _add_school_year_arg(off_status)
+    off_status.set_defaults(func=cmd_offen_status)
+    off_verif = off_sub.add_parser(
+        "verifizieren",
+        help="welche Perioden wirklich ohne Lehrstoff-Text sind",
+        description="Trennt 'wirklich leer' (kein Text) von 'hat Text, nur "
+                    "Absenzenprüfung fehlt' — je Termin ein API-Call.")
+    _add_von_bis(off_verif)
+    _add_json(off_verif)
+    _add_school_year_arg(off_verif)
+    off_verif.set_defaults(func=cmd_offen_verifizieren)
+    off_vorschlag = off_sub.add_parser(
+        "vorschlag",
+        help="Vorschlag-JSON aus Git-Logs bauen (Testlauf, für Skill/Agent)",
+        description="Lädt offene Perioden + Commits/Diffs je Block und gibt "
+                    "Vorschlag-JSON aus (blocks + skipped). Schreibt nichts. "
+                    "Texte prüfen/bestätigen, dann `offen eintragen --datei`.")
+    _add_von_bis(off_vorschlag)
+    _add_school_year_arg(off_vorschlag)
+    off_vorschlag.set_defaults(func=cmd_offen_vorschlag)
+    off_eintragen = off_sub.add_parser(
+        "eintragen", help="bestätigte Lehrstoffe aus Datei eintragen (Write)",
+        description="JSON-Datei [{periodId, topicId, text, classId, start, "
+                    "end, date}, ...]: je Eintrag ein PUT (+Lesson-Details-URL).")
+    off_eintragen.add_argument("--datei", dest="datei", required=True,
+                               help="bestätigte Batch-JSON-Datei")
+    off_eintragen.add_argument("--pause", dest="pause", type=float,
+                               default=1.0,
+                               help="Sekunden zwischen PUTs (Standard 1.0, "
+                                    "gegen IP-Rate-Limit)")
+    _add_school_year_arg(off_eintragen)
+    off_eintragen.set_defaults(func=cmd_offen_eintragen)
+    off_fest = off_sub.add_parser(
+        "festtexte", help="Festtext-Fächer (SS, BESP) füllen",
+        description="Offene Perioden mit Festtext (SS/BESP) füllen. "
+                    "--testlauf (Standard) zeigt nur.")
+    _add_von_bis(off_fest)
+    _add_json(off_fest)
+    off_fest.add_argument("--pause", dest="pause", type=float, default=1.0,
+                          help="Sekunden zwischen PUTs (Standard 1.0)")
+    _add_testlauf(off_fest)
+    _add_school_year_arg(off_fest)
+    off_fest.set_defaults(func=cmd_offen_festtexte)
+    off_pruefen = off_sub.add_parser(
+        "pruefen", help="Absenzenprüfung für offene Perioden (Write)",
+        description="Mit --datei: Perioden aus Datei ([{periodId}, ...]). "
+                    "Ohne: alle prüfbedürftigen Perioden in --von/--bis.")
+    off_pruefen.add_argument("--datei", dest="datei", default=None,
+                             help="JSON-Datei [{periodId}, ...] statt Zeitraum")
+    _add_von_bis(off_pruefen, required=False)
+    off_pruefen.add_argument("--pause", dest="pause", type=float, default=1.0,
+                             help="Sekunden zwischen Calls (Standard 1.0)")
+    _add_school_year_arg(off_pruefen)
+    off_pruefen.set_defaults(func=cmd_offen_pruefen)
+
+    # -- search --
+    sea = sub.add_parser(
+        "search", help="Klassen/Lehrer/Schüler suchen (mit --detail)",
+        description="Textsuche über Klassen, Lehrer und Schüler (volle Namen "
+                    "inklusive). Mit --detail und genau einem Treffer öffnet "
+                    "sich die Detail-Sicht: Schüler → Student-Detail, Lehrer "
+                    "→ Steckbrief + KV-Klassen, Klasse → Klassen-Übersicht.",
+        epilog="Beispiele:\n"
+               "  wu search Muster\n"
+               "  wu search \"Erika Muster\" --wortteile --detail\n"
+               "  wu search GRG --alle-jahre",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    sea.add_argument("anfrage", help="Suchtext, z.B. 'Erika Muster'")
+    sea.add_argument("--wortteile", dest="wortteile", action="store_true",
+                     help="Vor-/Nachname einzeln suchen und zusammenführen "
+                          "(findet z.B. 'Erika Muster' via Einzelteile + "
+                          "Kurzname-Heuristik)")
+    sea.add_argument("--alle-jahre", dest="alle_jahre", action="store_true",
+                     help="zusätzlich ältere Schuljahre durchsuchen "
+                          "(Treffer als NICHT AKTUELL markiert)")
+    sea.add_argument("--detail", dest="detail", action="store_true",
+                     help="bei genau einem Treffer Detail-Sicht öffnen")
+    _add_json(sea)
+    _add_school_year_arg(sea)
+    sea.set_defaults(func=cmd_search)
+
+    # -- intern (versteckt) --
+    inter = sub.add_parser(
+        "intern", help="Interna: Session, Recorder, API-Passthroughs",
+        description="Interna für Entwicklung, Session-Management und das "
+                    "Agenten-Setup (login, logout, session, record, rpc, "
+                    "rest). Im Alltag nicht nötig.")
+    inter_sub = inter.add_subparsers(dest="sub", required=True)
+    login_parser = inter_sub.add_parser("login", help=argparse.SUPPRESS)
     login_parser.set_defaults(func=cmd_login)
-
-    sub.add_parser(
-        "logout",
-        help="invalidate the session and delete the session cache")
-    sub.choices["logout"].set_defaults(func=cmd_logout)
-
-    se = sub.add_parser(
-        "search", help="search classes/teachers/students (full names)")
-    se.add_argument("query")
-    se.add_argument("--json", action="store_true")
-    se.add_argument("--fallback", action="store_true",
-                    help="tokenizing fallback: Vor-/Nachname einzeln "
-                         "suchen und zusammenführen (findet z.B. "
-                         "'Erika Muster' via Einzelteile + "
-                         "Kurzname-Heuristik)")
-    se.add_argument("--all-years", action="store_true",
-                     help="bei Leerstand bzw. zusätzlich ältere Schuljahre "
-                          "durchsuchen (Treffer als NICHT AKTUELL "
-                          "gekennzeichnet; --school-year-id pinnt auf ein "
-                          "Jahr ohne Fallback)")
-    _add_school_year_arg(se)
-    se.set_defaults(func=cmd_search)
-
-    kv = sub.add_parser(
-        "kv", help="show the Klassenvorstand of a class (id or name), "
-                   "or of the class(es) of a student (--student)")
-    kv.add_argument("klasse", nargs="?", default=None,
-                    help="class id (e.g. 4134) or name (e.g. 5AAIF); "
-                         "required unless --student")
-    kv.add_argument("--student", default=None,
-                    help="student name: resolve student -> class(es) "
-                         "-> KV (tokenizing match on first/last/short name)")
-    kv.add_argument("--json", action="store_true")
-    _add_school_year_arg(kv)
-    kv.set_defaults(func=cmd_kv)
-
-    rp = sub.add_parser(
-        "rpc", help="generic JSON-RPC passthrough (JSON output)")
-    rp.add_argument("method", help="JSON-RPC method, e.g. getKlassen")
+    logout_parser = inter_sub.add_parser("logout", help=argparse.SUPPRESS)
+    logout_parser.set_defaults(func=cmd_logout)
+    sess = inter_sub.add_parser("session", help=argparse.SUPPRESS)
+    sess_sub = sess.add_subparsers(dest="sub2", required=True)
+    sess_status = sess_sub.add_parser("status", help=argparse.SUPPRESS)
+    sess_status.add_argument("--json", action="store_true")
+    sess_status.set_defaults(func=cmd_session_status)
+    rec = inter_sub.add_parser("record", help=argparse.SUPPRESS)
+    rec.add_argument("--host", default="localhost")
+    rec.add_argument("--port", type=int, default=9222)
+    rec.add_argument("--domain", default="spengergasse.webuntis.com")
+    rp = inter_sub.add_parser("rpc", help=argparse.SUPPRESS)
+    rp.add_argument("method", help="JSON-RPC-Methode, z.B. getKlassen")
     rp.add_argument("params_json", nargs="?", default=None,
-                    help="params as JSON string, default {}")
+                    help="Parameter als JSON-String, Standard {}")
     rp.set_defaults(func=cmd_rpc)
-
-    rst = sub.add_parser(
-        "rest", help="generic REST passthrough to /WebUntis/api/<path>")
-    rst.add_argument("path", help="path relative to /WebUntis/api, e.g. "
-                                  "rest/view/v1/schoolyears")
+    rst = inter_sub.add_parser("rest", help=argparse.SUPPRESS)
+    rst.add_argument("path", help="Pfad relativ zu /WebUntis/api")
     rst.add_argument("--method", default="GET",
-                     choices=["GET", "POST", "PUT", "DELETE"],
-                     help="HTTP method (default GET). NOTE: method does "
-                          "NOT imply read vs. write — POST open-periods "
-                          "is read-only, PUT lesson-topics writes.")
+                     choices=["GET", "POST", "PUT", "DELETE"])
     rst.add_argument("--data-json", default=None,
-                     help="request body as JSON string (POST/PUT)")
+                     help="Body als JSON-String (POST/PUT)")
     _add_school_year_arg(rst)
     rst.set_defaults(func=cmd_rest)
 
-    les = sub.add_parser(
-        "lesson", help="lesson diagnostics")
-    les_sub = les.add_subparsers(dest="sub", required=True)
-    les_info = les_sub.add_parser(
-        "info", help="teachers, klassen, mainStudentgroupId, "
-                     "roster vs. attending distribution for one lsId")
-    les_info.add_argument("lsid", type=int, help="lesson id (lsId)")
-    les_info.add_argument("--json", action="store_true")
-    _add_school_year_arg(les_info)
-    les_info.set_defaults(func=cmd_lesson_info)
-
-    sess = sub.add_parser(
-        "session", help="session cache and diagnostics")
-    sess_sub = sess.add_subparsers(dest="sub", required=True)
-    sess_status = sess_sub.add_parser(
-        "status", help="cache age + live check via app/data")
-    sess_status.add_argument("--json", action="store_true",
-                             help="include the full app/data payload")
-    sess_status.set_defaults(func=cmd_session_status)
-
-    le = sub.add_parser("lehrstoff", help="Lehrstoff (lesson topic)")
-    le_sub = le.add_subparsers(dest="sub", required=True)
-    le_list = le_sub.add_parser("list")
-    le_list.add_argument("--start", type=_date_arg, required=True)
-    le_list.add_argument("--end", type=_date_arg, required=True)
-    le_list.add_argument("--json", action="store_true")
-    _add_school_year_arg(le_list)
-    le_list.set_defaults(func=cmd_lehrstoff_list)
-
-    ls = sub.add_parser(
-        "lessons", help="list the user's lessons for one class, "
-                        "grouped by lesson (lsId)")
-    ls.add_argument("classname", help="class name, e.g. 3BAIF")
-    ls.add_argument("--subject", default=None,
-                    help="filter by subject short name (prefix match)")
-    ls.add_argument("--start", type=_date_arg, default=None,
-                    help="default: current schoolyear start")
-    ls.add_argument("--end", type=_date_arg, default=None,
-                    help="default: current schoolyear end")
-    ls.add_argument("--full-names", action="store_true",
-                    help="resolve teacher shorts to 'Lastname, Firstname'")
-    ls.add_argument("--json", action="store_true")
-    _add_school_year_arg(ls)
-    ls.set_defaults(func=cmd_lessons)
-
-    le_get = le_sub.add_parser("get")
-    le_get.add_argument("--period", type=int, required=True)
-    _add_school_year_arg(le_get)
-    le_get.set_defaults(func=cmd_lehrstoff_get)
-
-    le_set = le_sub.add_parser("set")
-    le_set.add_argument("--period", type=int, required=True)
-    le_set.add_argument("--topic-id", type=int, default=None)
-    src = le_set.add_mutually_exclusive_group(required=True)
-    src.add_argument("--text")
-    src.add_argument("--text-file")
-    src.add_argument("--text-stdin", action="store_true")
-    _add_school_year_arg(le_set)
-    le_set.set_defaults(func=cmd_lehrstoff_set)
-
-    le_batch = le_sub.add_parser("batch-set",
-                                 help="set multiple topics from a JSON file")
-    le_batch.add_argument("--file", required=True,
-                          help="JSON file: [{periodId, topicId, text, "
-                               "classId, start, end, date}, ...]")
-    le_batch.add_argument("--delay", type=float, default=1.0,
-                           help="seconds to wait between PUTs (default 1.0, "
-                                "avoids IP rate-limiting)")
-    _add_school_year_arg(le_batch)
-    le_batch.set_defaults(func=cmd_lehrstoff_batch_set)
-
-    le_git = le_sub.add_parser("from-git",
-                               help="derive text from GRG-* git logs")
-    le_git.add_argument("--class-name", required=True)
-    le_git.add_argument("--subject", required=True,
-                        help="WebUntis subject short name, e.g. SWP1y")
-    le_git.add_argument("--date", type=_date_arg, required=True)
-    le_git.add_argument("--period", type=int, default=None)
-    le_git.add_argument("--topic-id", type=int, default=None)
-    le_git.add_argument("--dry-run", action="store_true")
-    _add_school_year_arg(le_git)
-    le_git.set_defaults(func=cmd_lehrstoff_from_git)
-
-    le_status = le_sub.add_parser("status", help="overview of open periods")
-    le_status.add_argument("--start", type=_date_arg, required=True)
-    le_status.add_argument("--end", type=_date_arg, required=True)
-    le_status.add_argument("--json", action="store_true")
-    _add_school_year_arg(le_status)
-    le_status.set_defaults(func=cmd_lehrstoff_status)
-
-    le_fill = le_sub.add_parser("fill",
-                                help="fetch periods + git diffs, build batch JSON")
-    le_fill.add_argument("--start", type=_date_arg, required=True)
-    le_fill.add_argument("--end", type=_date_arg, required=True)
-    le_fill.add_argument("--dry-run", action="store_true", default=True)
-    le_fill.add_argument("--no-dry-run", dest="dry_run", action="store_false")
-    le_fill.add_argument("--file", default=None,
-                          help="confirmed batch JSON (required without --dry-run)")
-    le_fill.add_argument("--delay", type=float, default=1.0)
-    le_fill.add_argument("--json", action="store_true")
-    _add_school_year_arg(le_fill)
-    le_fill.set_defaults(func=cmd_lehrstoff_fill)
-
-    le_verify = le_sub.add_parser("verify",
-                                  help="check which periods truly have no text")
-    le_verify.add_argument("--start", type=_date_arg, required=True)
-    le_verify.add_argument("--end", type=_date_arg, required=True)
-    le_verify.add_argument("--json", action="store_true")
-    _add_school_year_arg(le_verify)
-    le_verify.set_defaults(func=cmd_lehrstoff_verify)
-
-    le_fill_fixed = le_sub.add_parser("fill-fixed",
-                                   help="fill SS/BESP with fixed text")
-    le_fill_fixed.add_argument("--start", type=_date_arg, required=True)
-    le_fill_fixed.add_argument("--end", type=_date_arg, required=True)
-    le_fill_fixed.add_argument("--dry-run", action="store_true", default=True,
-                            help="(default) show what would be filled, "
-                                 "write nothing")
-    le_fill_fixed.add_argument("--no-dry-run", dest="dry_run",
-                            action="store_false",
-                            help="actually submit the fixed-text topics")
-    le_fill_fixed.add_argument("--json", action="store_true")
-    le_fill_fixed.add_argument("--delay", type=float, default=1.0)
-    _add_school_year_arg(le_fill_fixed)
-    le_fill_fixed.set_defaults(func=cmd_lehrstoff_fill_fixed)
-
-    # -- absences --
-    abs_parser = sub.add_parser("absences", help="Absenzenkontrolle")
-    abs_sub = abs_parser.add_subparsers(dest="sub", required=True)
-
-    abs_check = abs_sub.add_parser("check", help="check absences for one period")
-    abs_check.add_argument("--period", type=int, required=True)
-    abs_check.set_defaults(func=cmd_check_absences)
-
-    abs_batch = abs_sub.add_parser("batch-check",
-                                   help="check absences from JSON file")
-    abs_batch.add_argument("--file", required=True,
-                           help="JSON: [{periodId: int}, ...]")
-    abs_batch.add_argument("--delay", type=float, default=1.0)
-    abs_batch.set_defaults(func=cmd_batch_check_absences)
-
-    abs_all = abs_sub.add_parser("check-all",
-                                 help="fetch open periods and check all absences")
-    abs_all.add_argument("--start", type=_date_arg, required=True)
-    abs_all.add_argument("--end", type=_date_arg, required=True)
-    abs_all.add_argument("--delay", type=float, default=1.0)
-    _add_school_year_arg(abs_all)
-    abs_all.set_defaults(func=cmd_check_all_absences)
-
-    # -- students --
-    stu = sub.add_parser("students", help="Schülerverwaltung (lesson attendance)")
-    stu_sub = stu.add_subparsers(dest="sub", required=True)
-
-    stu_list = stu_sub.add_parser(
-        "list", help="dump a lesson's attendance matrix")
-    stu_list.add_argument("--lsid", type=int, default=None,
-                          help="lesson id; optional if CLASS SUBJECT given")
-    stu_list.add_argument("class_name", nargs="?", default=None,
-                          help="class name, e.g. 2AHWII (with SUBJECT "
-                               "resolves the lsId automatically)")
-    stu_list.add_argument("subject", nargs="?", default=None,
-                          help="subject short name, e.g. SWP1x")
-    stu_list.add_argument("--class-id", type=int, default=None,
-                          help="only students of this class id")
-    stu_list.add_argument("--attending-only", action="store_true")
-    stu_list.add_argument("--all", action="store_true",
-                          help="text view: show every student, not only "
-                               "attending ones (JSON always shows all)")
-    stu_list.add_argument("--json", action="store_true")
-    _add_school_year_arg(stu_list)
-    stu_list.set_defaults(func=cmd_students_list)
-
-    stu_find = stu_sub.add_parser(
-        "find",
-        help="find students by name (tokenizing, auto-fallback "
-             "to older schoolyears)")
-    stu_find.add_argument("name", help="name, e.g. 'Erika Muster'")
-    stu_find.add_argument("--class", dest="klasse", default=None,
-                          help="filter by class name, e.g. 5BAIF")
-    stu_find.add_argument("--json", action="store_true")
-    _add_school_year_arg(stu_find)
-    stu_find.set_defaults(func=cmd_students_find)
-
-    stu_add = stu_sub.add_parser("add",
-                                 help="add a student to a lesson's attendance")
-    stu_add.add_argument("--lsid", type=int, required=True,
-                         help="lesson id (lsId) of the target lesson")
-    stu_add.add_argument("--class-id", type=int, required=True,
-                         help="class id of the lesson's own class (students "
-                              "kept unchanged)")
-    stu_add.add_argument("--student-id", type=int, default=None)
-    stu_add.add_argument("--student-name", default=None,
-                         help="search by (partial) name; needs unique match")
-    stu_add.add_argument("--dry-run", action="store_true", default=True)
-    stu_add.add_argument("--no-dry-run", dest="dry_run", action="store_false")
-    stu_add.add_argument("--out", default=None,
-                         help="write the submit payload JSON to this file")
-    stu_add.add_argument("--verbose", action="store_true")
-    _add_school_year_arg(stu_add)
-    stu_add.set_defaults(func=cmd_students_add)
-
-    stu_edit = stu_sub.add_parser(
-        "edit",
-        help="add/remove students in a lesson's attendance (single write)")
-    stu_edit.add_argument("--lsid", type=int, required=True,
-                          help="lesson id (lsId) of the target lesson")
-    stu_edit.add_argument("--class-id", type=int, required=True,
-                          help="class id of the lesson's own class (students "
-                               "kept unchanged)")
-    stu_edit.add_argument("--add-student-id", type=int, action="append",
-                          default=None,
-                          help="student id to enroll (repeatable)")
-    stu_edit.add_argument("--remove-student-id", type=int, action="append",
-                          default=None,
-                          help="student id to un-enroll (attendedPeriods "
-                               "reset to [], repeatable)")
-    stu_edit.add_argument("--dry-run", action="store_true", default=True)
-    stu_edit.add_argument("--no-dry-run", dest="dry_run",
-                          action="store_false")
-    stu_edit.add_argument("--out", default=None,
-                          help="write the submit payload JSON to this file")
-    stu_edit.add_argument("--verbose", action="store_true")
-    _add_school_year_arg(stu_edit)
-    stu_edit.set_defaults(func=cmd_students_edit)
-
-    stu_roster = stu_sub.add_parser(
-        "roster",
-        help="Excel-pasteable TSV participant list for one lesson unit")
-    stu_roster.add_argument("--lsid", type=int, default=None,
-                            help="lesson id; optional if CLASS SUBJECT given")
-    stu_roster.add_argument("class_name", nargs="?", default=None,
-                            help="class name, e.g. 3AAIF (with SUBJECT "
-                                 "resolves the lsId automatically)")
-    stu_roster.add_argument("subject", nargs="?", default=None,
-                            help="subject short name, e.g. WMC")
-    stu_roster.add_argument("--date", type=_resolve_roster_date,
-                            default="now",
-                            help="unit day: YYYY-MM-DD or 'now' (= today, "
-                                 "default)")
-    stu_roster.add_argument("--no-header", action="store_true",
-                            help="omit the 'Name<TAB>Klasse' header row")
-    stu_roster.add_argument("--json", action="store_true")
-    _add_school_year_arg(stu_roster)
-    stu_roster.set_defaults(func=cmd_students_roster)
-
-    args = p.parse_args()
+    argv = sys.argv[1:]
+    # KLASSE/FACH (enthält immer `/`, Subs nie) wird vorab herausgezogen:
+    # ein `nargs="?"`-Positionsargument vor Subparsern deutet argparse
+    # sonst als Unterbefehl (1 Token) bzw. frisst den Sub (2 Token nach
+    # Pop). Options-Werte (z.B. --text "a/b", Dateipfade) werden dabei
+    # übersprungen. Nach dem Parsen wieder einsetzen.
+    adresse = None
+    argv, adresse = _extract_adresse(argv)
+    args = p.parse_args(argv)
+    if getattr(args, "cmd", None) == "lesson":
+        args.klasse_fach = adresse
     try:
-        if args.cmd == "record":
-            from webuntis_agent.recorder import main as rec
-            return rec([f"--host={args.host}", f"--port={args.port}",
-                        f"--domain={args.domain}"])
+        if args.cmd == "intern" and args.sub == "record":
+            from webuntis_agent.recorder import main as rec_main
+            return rec_main([f"--host={args.host}", f"--port={args.port}",
+                             f"--domain={args.domain}"])
         if hasattr(args, "func"):
             return args.func(args)
+    except UnknownLessonError as e:
+        # Unbekannte --lsid (Server meldet generischen Internal server
+        # error): Anwender-Meldung nach stderr, kein Traceback.
+        print(str(e), file=sys.stderr)
+        return 2
     except ModuleNotFoundError as e:
         print(
             f"Fehler: Python-Modul fehlt ({e.name}).\n\n"
@@ -472,8 +604,6 @@ def main() -> int:
         return 3
     p.print_help()
     return 1
-
-
 
 
 if __name__ == "__main__":

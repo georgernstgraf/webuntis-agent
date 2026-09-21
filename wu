@@ -3,7 +3,7 @@
 #
 # Aufruf (auch über Symlinks, z. B. in ~/svn/.../Toolset):
 #   wu search "Erika Muster"
-#   wu students find "Erika Muster"
+#   wu student "Erika Muster"
 #   wu --help
 #
 # Interpreter-Auswahl: bevorzugt wird die Repo-venv (.venv/bin/python);

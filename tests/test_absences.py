@@ -1,6 +1,6 @@
 """Absence write-loop wiring (no network).
 
-Regression test: `cmd_batch_check_absences` must pass `args.delay`
+Regression test: `cmd_offen_pruefen` must pass `args.pause`
 (not a bare `delay` name) into `_sleep_between`.
 """
 
@@ -8,7 +8,7 @@ import argparse
 import json
 import time
 
-from webuntis_agent import cli_absences
+from webuntis_agent import cli_offen
 
 
 class _FakeClient:
@@ -20,17 +20,18 @@ class _FakeClient:
         return {"success": True, "periodId": pid}
 
 
-def test_batch_check_uses_args_delay(tmp_path, capsys, monkeypatch):
+def test_pruefen_datei_uses_args_pause(tmp_path, capsys, monkeypatch):
     items = [{"periodId": 11}, {"periodId": 22}]
     f = tmp_path / "batch.json"
     f.write_text(json.dumps(items), encoding="utf-8")
     fake = _FakeClient()
-    monkeypatch.setattr(cli_absences, "_make_client", lambda args: fake)
-    args = argparse.Namespace(file=str(f), delay=1.0)
-    # delay>0 with 2 items sleeps before the 2nd iteration — record it.
+    monkeypatch.setattr(cli_offen, "_make_client", lambda args: fake)
+    args = argparse.Namespace(datei=str(f), pause=1.0, start=None, end=None,
+                              school_year_id=None)
+    # pause>0 with 2 items sleeps before the 2nd iteration — record it.
     slept = []
     monkeypatch.setattr(time, "sleep", slept.append)
-    rc = cli_absences.cmd_batch_check_absences(args)
+    rc = cli_offen.cmd_offen_pruefen(args)
     assert rc == 0
     assert fake.checked == [11, 22]
     assert slept == [1.0]

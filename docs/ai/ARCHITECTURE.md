@@ -19,37 +19,34 @@ fill-open-periods workflow with human confirmation.
 | `recorder.py` | CDP-Recorder: attaches to Brave:9222, captures Network + Runtime events to recordings/*.jsonl |
 | `client.py` | WebUntis HTTP client: login, JWT, REST/JSON-RPC endpoints, retry-with-backoff |
 | `gitlog.py` | GRG-* git-log analysis: pull, class folder resolution (split/February), commit diffs |
-| `cli.py` | Thin entry point: argparse wiring + `main()`; re-exports everything below for backward compat (`from webuntis_agent.cli import …` keeps working) |
-| `cli_common.py` | Shared CLI infrastructure: env/session/client, `_add_school_year_arg`, `_sleep_between`, period/topic/submit helpers, domain types (`PeriodFields`, `LessonGroup`, `SubmitItem`) |
-| `cli_lehrstoff.py` | `lehrstoff *`, `lessons` |
-| `cli_students.py` | `students *` (+ `_teacher_names_for_class`, `_resolve_lsid_from_class_subject`) |
-| `cli_absences.py` | `absences *` |
-| `cli_misc.py` | `search`, `kv`, `lesson info`, `session status`, generic `rpc`/`rest` passthrough, `record`, `login`/`logout` |
+| `cli.py` | Einstieg: Argparse-Verdrahtung + `main()` (deutsche Hilfe mit Beispielen, KLASSE/FACH-Extraktion, UnknownLessonError-Handler) |
+| `cli_common.py` | Geteilte Infra: Session/Client, Schuljahr-Flag, Period-/Lesson-Gruppierung, Topic-Submit, Such-Formatierung |
+| `cli_klasse.py` | `klasse` (Übersicht/Roster/Fächer/KV) |
+| `cli_lesson.py` | `lesson` (Roster/Matrix/Termine/Info/Teilnehmer/Lehrstoff/Absenzen) |
+| `cli_student.py` | `student` (Suche + Detail: Klasse/KV/Fächer/Absenzen) |
+| `cli_offen.py` | `offen` (Arbeitsvorrat: Liste/Status/Verifizieren/Vorschlag/Eintragen/Festtexte/Prüfen) |
+| `cli_suche.py` | `search` (Suche + Detail-Dispatch Student/Lehrer/Klasse) |
+| `cli_intern.py` | `intern` (versteckt: login/logout/session/record/rpc/rest) |
 
-## CLI Commands
+## CLI Commands (deutsch, Stand 2026-09-21; alt→neu s. README)
 
 | Command | Purpose |
 |---------|---------|
-| `login` / `logout` | persist/invalidate the cached session (`.webuntis_session.json`) |
-| `session status [--json]` | cache age + live check via `app/data` (exit 2 = dead session) |
-| `lehrstoff list --start --end [--json]` | List open periods (JSON includes lessonDetailsUrl) |
-| `lessons <class> [--subject]` | List the user's lessons for one class, grouped by lsId |
-| `search <text> [--fallback] [--all-years]` | Timetable search (exact default; tokenizing/multi-year opt-in) |
-| `students find <name> [--class]` | Student search (tokenizing + auto-fallback, NICHT AKTUELL flagged) |
-| `students list --lsid` | Attendance matrix dump |
-| `students roster CLASS SUBJECT [--date <YYYY-MM-DD\|now>]` | Excel-pasteable TSV unit participants (`Name<TAB>Klasse`, header default; `--date` default `now`; ambiguous lessons auto-pick closest + stderr label block) |
-| `students add` / `students edit` | Attendance writes (dry-run default) |
-| `lehrstoff get --period <id>` | Show existing topic for a period |
-| `lehrstoff set --period --text-file\|--text-stdin\|--text` | Write single topic |
-| `lehrstoff batch-set --file <json> [--delay 1.0]` | Bulk write from JSON file |
-| `lehrstoff from-git --class-name --subject --date [--dry-run]` | Derive text from git diffs |
-| `lehrstoff status/fill/verify/fill-fixed` | Open-periods overview / batch builder / text check / fixed-text fill |
-| `lesson info <lsid> [--json]` | Lesson diagnostics: teachers, klassen, mainStudentgroupId, roster vs. attending per klasse |
-| `kv <class\|name>` / `kv --student <name>` | Klassenvorstand of a class or of a student's class(es) |
-| `rpc <method> [params-json]` | Generic JSON-RPC passthrough (JSON output) |
-| `rest <path> [--method] [--data-json]` | Generic REST passthrough to `/WebUntis/api/<path>` (write-capable, method+body echoed) |
-| `absences check/batch-check/check-all` | Absenzenkontrolle |
-| `record` | Run CDP recorder |
+| `klasse KLASSE` | Übersicht: KV, eigene Fächer, Roster |
+| `klasse KLASSE roster\|faecher\|kv` | Teil-Sichten (TSV-Roster, Lesson-Liste, KV) |
+| `lesson KLASSE/FACH` | Roster des Termins zu `--datum` (Standard `heute`) |
+| `lesson K/F matrix\|termine\|info` | Anwesenheits-Matrix, Termine+Offen-Status, Diagnostik |
+| `lesson K/F lehrstoff zeigen\|eintragen\|aus-git` | Lehrstoff je Termin |
+| `lesson K/F absenzen zeigen\|pruefen` | fehlt/gehalten je Schüler; Absenzenprüfung (Write) |
+| `lesson K/F aufnehmen\|anpassen` | Teilnehmer-Writes (Testlauf-Standard) |
+| `student NAME` | Treffer + Detail: Klasse, KV, Fächer, Absenzen |
+| `offen liste\|status\|verifizieren` | Arbeitsvorrat lesen |
+| `offen vorschlag` | Vorschlag-JSON aus Git-Logs (Skill-Input, schreibt nichts) |
+| `offen eintragen --datei` | bestätigte Lehrstoffe schreiben |
+| `offen festtexte` | SS/BESP-Festtexte (Testlauf-Standard) |
+| `offen pruefen` | Absenzenprüfung über Zeitraum/Datei (Write) |
+| `search TEXT [--detail]` | Suche + Detail-Dispatch |
+| `intern …` | versteckt: login/logout/session/record/rpc/rest |
 
 ## `wu` Wrapper
 
@@ -65,7 +62,7 @@ für Direktaufrufe ohne `wu`.
 
 | Skill | Purpose |
 |-------|---------|
-| `fill-open-periods` | Orchestrates: list open periods → git-log + diffs → formulate texts → confirm → batch-set |
+| `fill-open-periods` | Orchestrates: `offen vorschlag` → git-log + diffs → formulate texts → confirm → `offen eintragen` |
 
 ## Knowledge Files (`docs/ai/`)
 
@@ -83,7 +80,7 @@ für Direktaufrufe ohne `wu`.
 ## Data Flows
 
 - **Reverse Engineering**: Brave (CDP:9222) → recorder.py → recordings/*.jsonl → analysis → docs/WEBUNTIS_API.md
-- **Lehrstoff Entry**: .env (credentials) → client.login() → JWT → get_open_periods() → gitlog.get_commits_for_class() → agent formulates text → batch-set --file → WebUntis PUT
+- **Lehrstoff Entry**: .env (credentials) → client.login() → JWT → get_open_periods() → gitlog.get_commits_for_class() → agent formulates text → `offen eintragen --datei` → WebUntis PUT
 - **Git-Log Analysis**: GRG-* repos → pull_all_repos() → get_commits_for_class(class, date, repo_filter) → get_commit_diff() → agent reads diffs → German Lehrstoff text
 
 ## External Dependencies

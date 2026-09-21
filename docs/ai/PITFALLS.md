@@ -20,7 +20,7 @@ Read this file carefully before making changes in affected areas.
   endpoint (matches date range). NO arithmetic fallback — ids are not
   derivable (21 = 2025/26, 24 = 2026/27, gap exists); when no date
   range matches, `resolve_schoolyear_id()` raises instead of guessing.
-  Override with `--school-year-id`.
+   Override with `--schuljahr-id`.
 
 ## Git-Log Analysis
 
@@ -33,9 +33,10 @@ Read this file carefully before making changes in affected areas.
 
 ## CLI / Shell
 
-- **UTF-8 in --text arg**: Bash mangles Umlaute ("HÜ" → "HUe") when passing via `--text "..."`. Use `--text-file <path>` or `batch-set --file <json>` instead.
+- **UTF-8 in --text arg**: Bash mangles Umlaute ("HÜ" → "HUe") when passing via `--text "..."`. Use `--text-datei <path>` or `offen eintragen --datei <json>` instead.
 - **.env key names**: `.env` may use short keys (`user`, `password`) or full keys (`WEBUNTIS_USER`). `_load_env()` maps short→full via aliases dict.
-- **argparse subparser defaults overwrite globals**: a subparser `--school-year-id` with `default=None` wipes a globally given value when the flag is absent after the subcommand. Subparser copies must use `default=argparse.SUPPRESS` so only an explicit flag overwrites.
+- **argparse subparser defaults overwrite globals**: a subparser `--schuljahr-id` with `default=None` wipes a globally given value when the flag is absent after the subcommand. Subparser copies must use `default=argparse.SUPPRESS` so only an explicit flag overwrites.
+- **argparse `nargs="?"` positional loses against subparsers**: ein optionales Positionsargument vor Subparsern wird als Unterbefehl gedeutet (1 Token) bzw. frisst den Sub (2 Token). Daher wird `KLASSE/FACH` in `main()` vorab extrahiert (`_extract_adresse`: erstes `/`-haltiges Positions-Token außerhalb von Options-Werten) — kein Positionsargument in argparse, dafür explizite `usage=`-Zeile.
 
 ## Recorder
 
@@ -55,7 +56,7 @@ Read this file carefully before making changes in affected areas.
 - **Timetable search matches no multi-word phrases**: `q="<Vorname Nachname>"`
   returns [], while the single tokens hit (teacher Kürzel, student
   `<Nachname><Vorname[:3]>`). Always tokenize (see `search_timetable_tokens()`,
-  CLI `search --fallback`, `students find`) instead of trusting the
+   CLI `search --wortteile`, `student`) instead of trusting the
   exact phrase.
 - **Student displayNames are anonymized** (last name only); the first
   name survives only in `shortName` (`<lastname><firstname[:3]>`) and in
@@ -64,7 +65,7 @@ Read this file carefully before making changes in affected areas.
   (`searchNote: shortname-hint`), never silently.
 - **Matrix student names are shortened too** (`allStudents[].name` is
   `"Nachname Vorname"` with the first name cut) — join
-  `students/overview` by student id for full names (as `students roster`
+   `students/overview` by student id for full names (as `lesson roster`
   does); matrix name is only the fallback for ids missing from overview.
 - **Matrix dates are int YYYYMMDD** (`lessonPeriods[].date`,
   `attendedPeriods[]`), while open-periods/dtRange use ISO strings —
@@ -75,8 +76,22 @@ Read this file carefully before making changes in affected areas.
   while `students/overview` always returns the CURRENT roster. Year
   fallback must therefore use timetable/search per year (max ~3 older
   years), and every non-current hit must be flagged NICHT AKTUELL
-  (`current: false`). Only `students find` falls back automatically;
+   (`current: false`). Only `student` falls back automatically;
   everything else keeps the current-year default.
+- **Unknown lsIds report as `code 0: Internal server error`**: a bogus
+  lsId in `getStudentLessonPeriodMatrix` (verified with 1, 22288,
+  999999999 in every schoolyear) does NOT yield "not found" — the
+  server answers with a generic internal error. `Client` therefore maps
+  exactly that signature to `UnknownLessonError` (lsId + schoolyear in
+  the message, findings hint included); `cli.main()` catches it
+  centrally (stderr + exit 2, no traceback) for all matrix consumers
+   (`lesson matrix/aufnehmen/anpassen/roster`, `lesson info`). Other RuntimeErrors
+  pass through unwrapped — do NOT broaden the match.
+- **Fremde Lehrer-Stundenpläne sind nicht lesbar**: Public-Endpoint
+  mit elementType=2/Lehrer-ID → 403 (`no right for anonymous user`);
+  JSON-RPC `getTimetable` (Typ 2) → Code -8520 (`not authenticated`).
+  Teacher-Dispatch (`search --detail`) zeigt daher Steckbrief +
+  KV-Klassen (aus `getKlassen` teacher1/2/3-Match), keinen Wochenplan.
 - **Student lists are admin-only**: `getStudents` (JSON-RPC) returns 0 and
   `/api/rest/view/v1/students` returns 500 for teacher accounts. Use
   `lessonstudentlist.do?lsid=X` (lesson participant page) to obtain
@@ -96,10 +111,10 @@ Read this file carefully before making changes in affected areas.
   a non-existent id (e.g. 999999) to the jsonrpc_web `setSchoolyear`
   call does NOT fail — the server just accepts it. Don't rely on it
   for validation.
-- **Students payload must be the FULL edit-semantics list**: dropping
-  already-attending students from the `students` array un-enrolls
-  them. Always build via `_build_students_payload()` (keeps class
-  roster + all attending students of any class).
+- **Teilnehmer-Payload muss die VOLLE Edit-Semantik-Liste sein**: bereits
+  anwesende Schüler aus dem `students`-Array (Wire-Format, englisch) zu
+  streichen meldet sie ab. Immer via `_build_students_payload()` bauen
+  (Klassen-Roster + alle Anwesenden jeder Klasse bleiben).
 
 ## Privacy
 
