@@ -18,8 +18,9 @@ Review-Basis für den nächsten Lauf:
   Review ab `git diff 7f69335...9d5c30a`.
 - Man-Page + offen-Default als (#20, #21) committed (Hash s.
   `git log`).
-- Folgeissue geplant: `raum suchen` (Freie-Raum-Suche: ROOM-entries je
-  Slot + capacity-Filter aus rooms/form; `availability`-Semantik
-  klären — beide aufgenommenen Slots lieferten durchgehend NONE).
+- Follow-up als Issue angelegt: #22 `raum suchen` (Freie-Raum-Suche:
+  ROOM-entries je Slot + capacity-Filter aus rooms/form;
+  `availability`-Semantik klären — beide aufgenommenen Slots lieferten
+  durchgehend NONE).
 
 Last updated: 2026-09-21
