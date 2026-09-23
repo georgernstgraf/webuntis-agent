@@ -72,7 +72,7 @@ cp .env.example .env
 
 ## Verwendung
 
-Kurzbefehl: `./wu …` — z.B. `./wu search "Erika Muster"`.
+Kurzbefehl: `./wu …` — z.B. `./wu student "Erika Muster"`.
 Er setzt `PYTHONPATH=src` und reicht an `webuntis_agent.cli` durch.
 
 Domain-Objekte: **Klasse** (`wu klasse 3AHWII`), **Lesson** als
@@ -82,8 +82,29 @@ Domain-Objekte: **Klasse** (`wu klasse 3AHWII`), **Lesson** als
 
 > **Bedienungsanleitung:** Die vollständige Referenz — alle Befehle,
 > Optionen, Arbeitsabläufe, Exit-Codes und Fallen, mehr als `--help` —
-> steht in der Man-Page `man/wu.1`:
-> `man --local-file man/wu.1`
+> steht in der Man-Page `man/wu.1`. Systemweit mit `man wu`
+> (s. u.), sonst direkt aus dem Repo: `man --local-file man/wu.1`.
+
+### Man-Page für den eigenen Nutzer verfügbar machen (`man wu`)
+
+Damit `man wu` in jedem Verzeichnis funktioniert, verlinke die Man-Page
+in dein Nutzer-Man-Verzeichnis — ganz ohne Root-Rechte. Als Symlink
+wirken spätere Änderungen an `man/wu.1` sofort, kein erneutes Kopieren
+nötig. Aus dem Repo-Wurzelverzeichnis:
+
+```bash
+mkdir -p ~/.local/share/man/man1
+ln -sf "$PWD/man/wu.1" ~/.local/share/man/man1/wu.1
+mandb -q ~/.local/share/man     # optional: whatis/apropos-Index
+man wu
+```
+
+`~/.local/share/man` steht auf den meisten Systemen bereits in
+`manpath`; prüfen mit `manpath`. Falls nicht, einmalig ergänzen:
+
+```bash
+export MANPATH="$HOME/.local/share/man:$MANPATH"   # z. B. in ~/.bashrc
+```
 
 ### Offene Perioden (Arbeitsvorrat: Lehrstoff oder Absenzen fehlen)
 
@@ -115,18 +136,21 @@ getrennt, `eigen`-Lessons erkannt. Absenzen sind opt-in (`--absenzen`).
 ```bash
 ./wu lesson 3AHWII/SWP1x lehrstoff zeigen --termin-id 5458590
 ./wu lesson 3AHWII/SWP1x lehrstoff eintragen \
-    --termin-id 5458590 --text-datei /tmp/topic.txt
+    --termin-id 5458590 --text-datei /tmp/topic.txt --ausfuehren
 ```
 
 (`--text-datei` statt `--text "…"` verwenden — die Shell verstümmelt
 Umlaute wie `HÜ`, `ä`, `ö`.)
 
+OHNE `--ausfuehren` ist jeder Write nur ein Testlauf (zeigt, was
+geschrieben würde) — es wird nie versehentlich etwas eingetragen.
+
 ### Lehrstoffe aus Git-Historie vorschlagen + batchweise eintragen
 
 ```bash
 ./wu offen vorschlag --von 2025-09-01 --bis 2026-07-05 > vorschlag.json
-# Texte prüfen/bestätigen, dann:
-./wu offen eintragen --datei batch.json --pause 1.0
+# Texte prüfen/bestätigen, dann (--ausfuehren ist Pflicht zum Schreiben):
+./wu offen eintragen --datei batch.json --pause 1.0 --ausfuehren
 ```
 
 Vorschlags-JSON-Format je Block: `periodId`, `topicId`, `text`,
@@ -147,8 +171,8 @@ Mit `--ausfuehren` (+ `--termin-id`/`--thema-id`) direkt eintragen.
 Einzelner Termin oder ganze Lesson:
 
 ```bash
-./wu lesson 3AHWII/SWP1x absenzen pruefen --termin-id 5457498
-./wu offen pruefen --von 2025-09-01 --bis 2026-07-05 --pause 1.5
+./wu lesson 3AHWII/SWP1x absenzen pruefen --termin-id 5457498 --ausfuehren
+./wu offen pruefen --von 2025-09-01 --bis 2026-07-05 --pause 1.5 --ausfuehren
 ```
 
 ### Abwesenheit eintragen / entfernen (Write, Testlauf-Standard)
@@ -167,8 +191,8 @@ heute, KLASSE/FACH-Adresse); Block-Standard wie in der Untis-UI
 ### Räume (vorbereitet, noch nicht implementiert)
 
 ```bash
-./wu raum suchen --datum 2026-09-25 --stunde 7 --max-plaetze 20   # Exit 3: Stub
-./wu raum groesse B3.07                                          # Exit 3: Stub
+./wu raum suchen --datum 2026-09-25 --stunde 7 --max-plaetze 20   # Exit 7: Stub
+./wu raum groesse B3.07                                          # Exit 7: Stub
 ```
 
 Die Endpunkte (Raum-Stundenplan, Raumverzeichnis mit Sitzplätzen) sind
@@ -195,6 +219,7 @@ Harter Schnitt ohne Aliase. Entsprechungstabelle:
 | `absences check-all/batch-check` | `offen pruefen` |
 | `absences check --period` | `lesson KLASSE/FACH absenzen pruefen --termin-id` |
 | `kv KLASSE` / `kv --student` | `klasse KLASSE kv` / `student NAME` |
+| `search NAME --detail` | `student NAME` / `lehrer NAME` / `klasse KLASSE` (je nach Treffer) |
 | `login/logout/session/record/rpc/rest` | `intern …` (aus der Hilfe versteckt) |
 
 Neu (Stundenplan-Serie, 2026-09-21): `student --absenzen` (Absenzen
@@ -211,6 +236,23 @@ Flag-Umbenennungen: `--school-year-id` → `--schuljahr-id`,
 `--delay` → `--pause`, `--class-id` → `--klassen-id`,
 `--period` → `--termin-id`, `--topic-id` → `--thema-id`.
 JSON-Schlüssel bleiben englisch.
+
+### Exit-Codes
+
+Jede Fehlerklasse hat einen eigenen Exit-Code (Details: `man/wu.1`):
+
+| Code | Bedeutung |
+---|---|---|
+| 0 | Erfolg |
+| 1 | Kein Befehl (volle Hilfe gedruckt) |
+| 2 | Verwendungsfehler (Unterbefehl-Hilfe + Fehlerzeile) |
+| 3 | Nicht gefunden (Klasse/Schüler/Lesson/Absenz/Schuljahr) |
+| 4 | Anmeldung/Session (401/403, Sperre) |
+| 5 | Netzwerkfehler (Verbindung/Timeout) |
+| 6 | Serverfehler (5xx, JSON-RPC) |
+| 7 | Noch nicht implementiert (`raum`-Stubs) |
+| 8 | Konfiguration/Setup (fehlendes Modul/`.env`) |
+| 9 | Unerwarteter interner Fehler (Bug, mit Traceback) |
 
 ### Reverse-engineer new endpoints (CDP-Recorder)
 
@@ -307,8 +349,9 @@ webuntis-agent/
 │   ├── cli_klasse.py     # klasse: Übersicht, Roster, Fächer, KV
 │   ├── cli_lesson.py     # lesson: Roster, Termine, Lehrstoff, Absenzen
 │   ├── cli_student.py    # student: Suche + Detail (Fächer, Absenzen)
+│   ├── cli_lehrer.py     # lehrer: Suche + Steckbrief (Kürzel, KV-Klassen)
 │   ├── cli_offen.py      # offen: Arbeitsvorrat (Vorschlag, Eintragen, Prüfen)
-│   ├── cli_suche.py      # search: Suche mit Detail-Dispatch
+│   ├── cli_raum.py       # raum: Stubs (Freie-Raum-Suche, Exit 7)
 │   └── cli_intern.py     # intern: Session, Recorder, rpc/rest (versteckt)
 ├── scripts/
 │   ├── brave-debug.sh     # start Brave with --remote-debugging-port=9222

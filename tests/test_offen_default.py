@@ -49,12 +49,13 @@ def test_ende_wird_gedeckelt():
 
 
 def test_halb_angegeben_ist_usage_fehler(capsys):
+    from webuntis_agent.errors import UsageError
     c = _MetaFakeClient(_meta())
     args = argparse.Namespace(start="2026-09-01", end=None)
-    with pytest.raises(SystemExit) as exc:
+    with pytest.raises(UsageError) as exc:
         cli_common._resolve_von_bis(args, c, 24)
-    assert exc.value.code == 2
-    assert "--von und --bis gemeinsam" in capsys.readouterr().err
+    assert exc.value.exit_code == 2
+    assert "--von und --bis gemeinsam" in str(exc.value)
 
 
 def test_meta_ohne_range_wirft():

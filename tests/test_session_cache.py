@@ -151,8 +151,9 @@ def test_no_relogin_loop_on_permanent_401(tmp_path, monkeypatch):
         calls["n"] += 1
         return httpx.Response(401, request=request)
 
+    from webuntis_agent.errors import AuthError
     c = _make_client(tmp_path, handler)
     c._session = Session("STALE", "_sch", c.school, c.host)
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(AuthError):
         c.get_subjects()
     assert calls["n"] == 2  # original + single retry, no loop

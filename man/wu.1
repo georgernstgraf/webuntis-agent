@@ -30,9 +30,9 @@ wu \- Klassenbuch-Arbeit in WebUntis vom Terminal aus (Roster, Lehrstoff, Absenz
 .RI [ "\-\-von " START " \-\-bis " ENDE ]
 .br
 .B wu
-.B search
+.B lehrer
 .RI [ OPTIONEN ]
-.I ANFRAGE
+.I NAME
 .br
 .B wu
 .B raum
@@ -85,6 +85,9 @@ z.B.
 Der Befehl
 .B klasse
 liefert Uebersicht (Klassenvorstand, Faecher, Roster).
+Bei einem Namens-Fehltreffer werden per Suche aehnliche Klassen als
+Kandidaten vorgeschlagen ("Meinst du eine dieser Klassen?") und Exit 3
+zurueckgegeben.
 .TP
 .B Lesson
 Ein Fach innerhalb einer Klasse (1\(en2 Semester), adressiert als genau
@@ -105,6 +108,12 @@ Ferien) dient
 .B Student
 Adressiert per Name (tokenisierend) oder direkt per
 .BR "\-\-id " STUDENT_ID .
+.TP
+.B Lehrer
+Adressiert per Kuerzel oder Name (tokenisierend). Der Befehl
+.B lehrer
+liefert Treffer, Kuerzel, Lehrer-ID und die KV-Klassen; ein
+Wochenstundenplan fremder Lehrer ist ueber die API nicht lesbar.
 .TP
 .B Termin
 Einzelne Unterrichtsstunde einer Lesson, adressiert per
@@ -128,7 +137,7 @@ laesst sie sich festlegen \(em vor
 .B und
 hinter dem Unterbefehl (bei doppelter Angabe gewinnt der Unterbefehl).
 .SS Lesen vs. Schreiben
-Rein lesende Befehle schreiben nie. Alle Writes tragen
+Rein lesende Befehle schreiben nie. ALLE Write-Befehle tragen
 .B \-\-testlauf
 (Standard: nur zeigen/protokollieren, kein Write) und
 .B \-\-ausfuehren
@@ -139,15 +148,23 @@ Rein lesende Befehle schreiben nie. Alle Writes tragen
 .BR "lesson lehrstoff aus-git" ,
 .BR "lesson absenzen eintragen" ,
 .BR "lesson absenzen entfernen" ,
+.BR "lesson absenzen pruefen" ,
+.BR "offen eintragen" ,
 .BR "offen festtexte"
-sowie
-.BR "offen eintragen"
 und
-.BR "offen pruefen"
-(letztere zwei ohne Testlauf-Schalter, dafuer mit
-.BR \-\-pause -Drosselung;
+.BR "offen pruefen" .
+Alle genannten Befehle drosseln ausserdem mit
+.BR \-\-pause .
 .B offen vorschlag
-ist immer lesend).
+ist immer lesend.
+.PP
+Ausnahme sind die generischen Passthroughs
+.B "intern rpc"
+und
+.BR "intern rest" :
+sie sind bewusst schreibfaehig (Variante B, Methode+Body nach stderr
+protokolliert) und tragen KEINEN Testlauf-Schalter \(em als
+Entwickler-Escape-Hatch.
 .SH BEFEHLE
 .SS klasse \- alles zu einer Klasse
 .BI "wu klasse " KLASSENNAME
@@ -260,6 +277,10 @@ Eingetragenen Lehrstoff eines Termins anzeigen (braucht
 .B lehrstoff eintragen
 Einzelner Lehrstoff-Write fuer
 .BR \-\-termin-id .
+.B \-\-testlauf
+(Standard) zeigt nur; mit
+.B \-\-ausfuehren
+wird geschrieben.
 Textquelle:
 .B \-\-text
 (ACHTUNG: die Shell verstuemmelt Umlaute beim Uebergeben \(em aus
@@ -335,6 +356,10 @@ Absenzenpruefung durchfuehren (Write). Mit
 .B \-\-termin-id\fR:
 genau dieser Termin; ohne: alle ungeprueften Termine der Lesson im
 Zeitraum (Standard: Schuljahresstart bis heute).
+.B \-\-testlauf
+(Standard) zeigt nur; mit
+.B \-\-ausfuehren
+wird geprueft.
 .SS student \- alles zu einem Schueler
 .BI "wu student " [ NAME ]
 .RI [ OPTIONEN ]
@@ -421,7 +446,10 @@ als Quelle). Ausgabe eignet sich zur Weiterverarbeitung
 Bestaetigte Lehrstoffe aus einer JSON-Datei eintragen (Write, je Eintrag
 ein PUT):
 .RI [{ periodId ", " topicId ", " text ", " classId ", " start ", " end ", " date }, ...].
-Mit
+.B \-\-testlauf
+(Standard) zeigt nur den Batch,
+.B \-\-ausfuehren
+schreibt. Mit
 .B \-\-pause
 gedrosselt (Standard 1.0 s, gegen IP-Rate-Limit, siehe
 .BR HINWEISE ).
@@ -441,22 +469,31 @@ Perioden aus Datei
 .RI ([{ periodId }, ...]);
 ohne: alle pruefbeduerftigen Perioden in
 .BR \-\-von /\-\-bis .
-.SS search \- suchen mit Detail-Dispatch
-.BI "wu search " ANFRAGE
+.B \-\-testlauf
+(Standard) zeigt nur,
+.B \-\-ausfuehren
+prueft.
+.SS lehrer \- alles zu einem Lehrer
+.BI "wu lehrer " NAME
 .RI [ OPTIONEN ]
 .PP
-Textsuche ueber Klassen, Lehrer und Schueler (volle Namen inklusive).
-Mit
-.B \-\-detail
-und genau einem Treffer oeffnet sich die Detail-Sicht: Schueler
-\(-> Student-Detail, Lehrer \(-> Steckbrief + KV-Klassen (kein
-Wochenplan \(em fremde Lehrerplaene sind nicht lesbar), Klasse \(->
-Klassen-Uebersicht.
+Suche per Kuerzel oder Name (tokenisierend mit
+.BR \-\-wortteile ),
+Steckbrief (Kuerzel, Lehrer-ID) und die KV-Klassen (aus
+.IR getKlassen ).
+Ein Wochenstundenplan fremder Lehrer ist ueber die API nicht lesbar;
+eigene Lessons prueft man ueber
+.BR "klasse " KLASSE .
+.TP
 .B \-\-wortteile
-und
+Vor-/Nachname einzeln suchen und zusammenfuehren.
+.TP
 .B \-\-alle-jahre
-wie bei
-.BR student .
+Zusaetzlich aeltere Schuljahre durchsuchen (max. drei); Treffer von dort
+sind als NICHT AKTUELL markiert.
+.TP
+.B \-\-json
+Strukturierte Ausgabe (Treffer + Details der aktuellen Treffer).
 .SS raum \- Raeume (Stubs)
 .B wu raum suchen
 .RI [ OPTIONEN ]
@@ -466,7 +503,7 @@ wie bei
 .PP
 Reserviert das CLI-Vokabular fuer die geplante Freie-Raum-Suche
 (Belegung aus Raum-Stundenplaenen, Sitzplatz-Filter aus dem
-Raumverzeichnis). Noch nicht implementiert: beide Befehle melden Exit 3.
+Raumverzeichnis). Noch nicht implementiert: beide Befehle melden Exit 7.
 Optionen (geplante Semantik):
 .BR \-\-datum
 (auch
@@ -544,7 +581,7 @@ Filter und Lehrer-Vollnamen (fuer
 wu offen status --von 2026-09-01 --bis 2026-09-30
 wu offen vorschlag --von 2026-09-01 --bis 2026-09-30 > vorschlag.json
 # Texte in vorschlag.json pruefen/bestaetigen, dann:
-wu offen eintragen --datei batch.json --pause 1.0
+wu offen eintragen --datei batch.json --pause 1.0 --ausfuehren
 .EE
 .PP
 Fuer Faechern ohne Git-Content (SS, BESP) stattdessen:
@@ -556,12 +593,12 @@ wu offen festtexte --von 2026-09-01 --bis 2026-09-30 --ausfuehren
 .EX
 wu lesson 5XZY/SWP1x lehrstoff zeigen --termin-id PERIOD_ID
 wu lesson 5XZY/SWP1x lehrstoff eintragen --termin-id PERIOD_ID \\
-    --text-datei /tmp/topic.txt
+    --text-datei /tmp/topic.txt --ausfuehren
 .EE
 .SS Absenzen pruefen und Abwesenheit eintragen
 .EX
-wu lesson 5XZY/SWP1x absenzen pruefen --termin-id PERIOD_ID
-wu offen pruefen --von 2026-09-01 --bis 2026-09-30 --pause 1.5
+wu lesson 5XZY/SWP1x absenzen pruefen --termin-id PERIOD_ID --ausfuehren
+wu offen pruefen --von 2026-09-01 --bis 2026-09-30 --pause 1.5 --ausfuehren
 wu lesson 5XZY/SWP1x absenzen eintragen \\
     --schueler-name "Erika Muster" --datum 2026-09-25
 wu lesson 5XZY/SWP1x absenzen zeigen --termin-id PERIOD_ID
@@ -614,27 +651,52 @@ Generischer REST-Passthrough, Pfad relativ zu
 Beide Passthroughs sind schreibfaehig (Variante B); Methode+Body werden
 nach stderr protokolliert.
 .SH RUECKGABEWERTE
+Jede Fehlerklasse hat einen eigenen Exit-Code (HTTP-analog):
 .TP
 .B 0
 Erfolg.
 .TP
 .B 1
-Kein Befehl (Hilfe wird gedruckt).
+Kein Befehl: die vollstaendige Hilfe wird gedruckt.
 .TP
 .B 2
-Verwendungs-/Server-Fehler: falsche Argumente, Klasse/Schueler nicht
-gefunden, mehrdeutige Namenssuche, unbekannte oder rechte-fremde Lesson
-(Server meldet generisch
-.IR "code 0: Internal server error" ;
-.B wu
-mappt das auf
-.BR UnknownLessonError ,
-Meldung nach stderr, kein Traceback).
+Verwendungsfehler (HTTP 400): falsche/m fehlende Argumente,
+unzulaessige Kombinationen, mehrdeutige Namenssuche. Es wird die
+vollstaendige Hilfe des betroffenen Unterbefehls gedruckt,
+danach die Fehlerzeile.
 .TP
 .B 3
+Nicht gefunden (HTTP 404): Klasse, Schueler, Lesson/Termin, Absenz,
+Schuljahr; unbekannte oder rechte-fremde lsId (Server meldet generisch
+.IR "code 0: Internal server error" ,
+.B wu
+mappt das auf
+.BR UnknownLessonError ).
+.TP
+.B 4
+Anmeldung/Session (HTTP 401/403): fehlende oder abgelehnte
+Zugangsdaten, Captcha-/Lockout-Sperre, tote Session.
+.TP
+.B 5
+Netzwerkfehler: Verbindungs-, Lese- oder Timeout-Fehler (Transport).
+.TP
+.B 6
+Serverfehler (HTTP 5xx): JSON-RPC-Fehler, nicht verifizierbarer Login,
+Layout-/Payload-Aenderung.
+.TP
+.B 7
 Noch nicht implementiert
-.RB ( raum -Stubs)
-oder fehlendes Python-Modul (mit Setup-Anleitung nach stderr).
+.RB ( raum -Stubs).
+.TP
+.B 8
+Konfiguration/Setup: fehlendes Python-Modul oder fehlende
+.IR .env ;
+deutsche Setup-Anleitung nach stderr.
+.TP
+.B 9
+Unerwarteter interner Fehler (Bug): Meldung plus Traceback nach stderr.
+.PP
+Erwartete Fehler (2\(en8) werden ohne Traceback nach stderr gemeldet.
 .SH DATEIEN
 .TP
 .I .env

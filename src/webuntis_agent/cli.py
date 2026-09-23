@@ -1,6 +1,6 @@
 """CLI-Einstieg für webuntis-agent (Domain-CLI, s. DECISIONS.md).
 
-Top-Level: klasse, lesson, student, offen, search, intern.
+Top-Level: klasse, lesson, student, lehrer, offen, intern.
 Eine Lesson wird immer als KLASSE/FACH adressiert (z.B. 3AHWII/SWP1x).
 """
 
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import traceback
 
 from webuntis_agent.cli_intern import (
     cmd_login,
@@ -26,6 +27,15 @@ from webuntis_agent.cli_common import (
     _add_school_year_arg,
     _date_arg,
     _datum_arg,
+    _HelpfulParser,
+    _print_help_and_error,
+)
+from webuntis_agent.errors import (
+    ConfigError,
+    UnexpectedError,
+    UsageError,
+    WuError,
+    classify_exit,
 )
 from webuntis_agent.cli_lesson import (
     cmd_absenzen_eintragen,
@@ -51,10 +61,9 @@ from webuntis_agent.cli_offen import (
     cmd_offen_verifizieren,
     cmd_offen_vorschlag,
 )
+from webuntis_agent.cli_lehrer import cmd_lehrer
 from webuntis_agent.cli_raum import cmd_raum_groesse, cmd_raum_suchen
 from webuntis_agent.cli_student import cmd_student
-from webuntis_agent.cli_suche import cmd_search
-from webuntis_agent.client import UnknownLessonError
 
 
 def _add_testlauf(sp):
@@ -132,21 +141,35 @@ def _extract_adresse(argv: list[str]) -> tuple[list[str], str | None]:
     return rest, adresse
 
 
+def _attach_parsers(parser: argparse.ArgumentParser) -> None:
+    """Stamp `_parser` (the owning subparser) onto every subcommand.
+
+    Hand-rolled usage errors (`usage_error`) use it to print the matching
+    subcommand help, not the top-level help. Recurses through the tree.
+    """
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for child in action.choices.values():
+                child.set_defaults(_parser=child)
+                _attach_parsers(child)
+
+
 def main() -> int:
-    p = argparse.ArgumentParser(
+    p = _HelpfulParser(
         prog="wu",
         description="WebUntis-Agent: Klassenbuch-Arbeit vom Terminal aus — "
                     "Roster, Lehrstoff und Absenzen für den eigenen Unterricht.\n\n"
                     "Domain-Objekte: KLASSE (z.B. 3AHWII), LESSON als "
-                    "KLASSE/FACH (z.B. 3AHWII/SWP1x), STUDENT per Name.\n"
+                    "KLASSE/FACH (z.B. 3AHWII/SWP1x), STUDENT und LEHRER "
+                    "per Name.\n"
                     "Alle Ausgaben sind deutsch; --json liefert maschinenlesbare "
                     "Strukturen (Schlüssel englisch).",
         epilog="Beispiele:\n"
                "  wu klasse 3AHWII               Übersicht: KV, Fächer, Roster\n"
                "  wu lesson 3AHWII/SWP1x         Roster des nächsten Termins\n"
                "  wu student \"Erika Muster\"       alles zu einer Schülerin\n"
-               "  wu offen status --von 2026-09-01 --bis 2026-09-30\n"
-               "  wu search Muster --detail",
+               "  wu lehrer MK                   Steckbrief + KV-Klassen\n"
+               "  wu offen status --von 2026-09-01 --bis 2026-09-30",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--schuljahr-id", dest="school_year_id", type=int,
                    default=None,
@@ -350,9 +373,10 @@ def main() -> int:
     les_lehr_zeigen.set_defaults(func=cmd_lehrstoff_zeigen)
     les_lehr_eintragen = les_lehr_sub.add_parser(
         "eintragen", help="Lehrstoff für einen Termin eintragen (Write)",
-        description="Einzelner Lehrstoff-Write. Quelle: --text (Achtung: "
-                    "Shell/Umlaute — lieber --text-datei), --text-datei oder "
-                    "--text-stdin.")
+        description="Einzelner Lehrstoff-Write. --testlauf (Standard) zeigt "
+                    "nur; mit --ausfuehren wird geschrieben. Quelle: --text "
+                    "(Achtung: Shell/Umlaute — lieber --text-datei), "
+                    "--text-datei oder --text-stdin.")
     les_lehr_eintragen.add_argument("--termin-id", dest="termin", type=int,
                                     required=True,
                                     help="Termin-ID (periodId)")
@@ -367,6 +391,7 @@ def main() -> int:
     les_lehr_eintragen.add_argument("--text-stdin", dest="text_stdin",
                                     action="store_true",
                                     help="Text von stdin lesen")
+    _add_testlauf(les_lehr_eintragen)
     _add_school_year_arg(les_lehr_eintragen)
     les_lehr_eintragen.set_defaults(func=cmd_lehrstoff_eintragen)
     les_lehr_git = les_lehr_sub.add_parser(
@@ -475,7 +500,8 @@ def main() -> int:
         "pruefen", help="Absenzenprüfung durchführen (Write)",
         description="Mit --termin-id: genau dieser Termin. Ohne: alle "
                     "ungeprüften Termine dieser Lesson im Zeitraum "
-                    "(Standard: Schuljahresstart bis heute).")
+                    "(Standard: Schuljahresstart bis heute). --testlauf "
+                    "(Standard) zeigt nur; mit --ausfuehren wird geprüft.")
     les_abs_pruefen.add_argument("--termin-id", dest="termin", type=int,
                                  default=None,
                                  help="einzelner Termin (periodId)")
@@ -483,6 +509,7 @@ def main() -> int:
     les_abs_pruefen.add_argument("--pause", dest="pause", type=float,
                                  default=1.0,
                                  help="Sekunden zwischen Calls (Standard 1.0)")
+    _add_testlauf(les_abs_pruefen)
     _add_school_year_arg(les_abs_pruefen)
     les_abs_pruefen.set_defaults(func=cmd_absenzen_pruefen)
 
@@ -575,13 +602,16 @@ def main() -> int:
     off_eintragen = off_sub.add_parser(
         "eintragen", help="bestätigte Lehrstoffe aus Datei eintragen (Write)",
         description="JSON-Datei [{periodId, topicId, text, classId, start, "
-                    "end, date}, ...]: je Eintrag ein PUT (+Lesson-Details-URL).")
+                    "end, date}, ...]: je Eintrag ein PUT (+Lesson-Details-URL). "
+                    "--testlauf (Standard) zeigt nur; mit --ausfuehren wird "
+                    "geschrieben.")
     off_eintragen.add_argument("--datei", dest="datei", required=True,
                                help="bestätigte Batch-JSON-Datei")
     off_eintragen.add_argument("--pause", dest="pause", type=float,
                                default=1.0,
                                help="Sekunden zwischen PUTs (Standard 1.0, "
                                     "gegen IP-Rate-Limit)")
+    _add_testlauf(off_eintragen)
     _add_school_year_arg(off_eintragen)
     off_eintragen.set_defaults(func=cmd_offen_eintragen)
     off_fest = off_sub.add_parser(
@@ -599,12 +629,14 @@ def main() -> int:
         "pruefen", help="Absenzenprüfung für offene Perioden (Write)",
         description="Mit --datei: Perioden aus Datei ([{periodId}, ...]). "
                     "Ohne: alle prüfbedürftigen Perioden im Zeitraum "
-                    "(Standard: Schuljahr-Start bis heute).")
+                    "(Standard: Schuljahr-Start bis heute). --testlauf "
+                    "(Standard) zeigt nur; mit --ausfuehren wird geprüft.")
     off_pruefen.add_argument("--datei", dest="datei", default=None,
                              help="JSON-Datei [{periodId}, ...] statt Zeitraum")
     _add_von_bis(off_pruefen, required=False, schuljahr_default=True)
     off_pruefen.add_argument("--pause", dest="pause", type=float, default=1.0,
                              help="Sekunden zwischen Calls (Standard 1.0)")
+    _add_testlauf(off_pruefen)
     _add_school_year_arg(off_pruefen)
     off_pruefen.set_defaults(func=cmd_offen_pruefen)
 
@@ -650,30 +682,27 @@ def main() -> int:
     _add_school_year_arg(rau_groesse)
     rau_groesse.set_defaults(func=cmd_raum_groesse)
 
-    # -- search --
-    sea = sub.add_parser(        "search", help="Klassen/Lehrer/Schüler suchen (mit --detail)",
-        description="Textsuche über Klassen, Lehrer und Schüler (volle Namen "
-                    "inklusive). Mit --detail und genau einem Treffer öffnet "
-                    "sich die Detail-Sicht: Schüler → Student-Detail, Lehrer "
-                    "→ Steckbrief + KV-Klassen, Klasse → Klassen-Übersicht.",
+    # -- lehrer --
+    leh = sub.add_parser(
+        "lehrer", help="Lehrer: Treffer, Kürzel, KV-Klassen",
+        description="Alles zu einem Lehrer: Suche per Kürzel/Name "
+                    "(tokenisierend, mit optionalem Fallback in ältere "
+                    "Schuljahre), Kürzel/Lehrer-ID und die KV-Klassen. "
+                    "Fremde Lehrer-Stundenpläne sind via API nicht lesbar.",
         epilog="Beispiele:\n"
-               "  wu search Muster\n"
-               "  wu search \"Erika Muster\" --wortteile --detail\n"
-               "  wu search GRG --alle-jahre",
+               "  wu lehrer MK\n"
+               "  wu lehrer \"Muster, Klaus\" --wortteile\n"
+               "  wu lehrer Must --alle-jahre --json",
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    sea.add_argument("anfrage", help="Suchtext, z.B. 'Erika Muster'")
-    sea.add_argument("--wortteile", dest="wortteile", action="store_true",
-                     help="Vor-/Nachname einzeln suchen und zusammenführen "
-                          "(findet z.B. 'Erika Muster' via Einzelteile + "
-                          "Kurzname-Heuristik)")
-    sea.add_argument("--alle-jahre", dest="alle_jahre", action="store_true",
+    leh.add_argument("name", help="Name oder Kürzel, z. B. MK")
+    leh.add_argument("--wortteile", dest="wortteile", action="store_true",
+                     help="Vor-/Nachname einzeln suchen und zusammenführen")
+    leh.add_argument("--alle-jahre", dest="alle_jahre", action="store_true",
                      help="zusätzlich ältere Schuljahre durchsuchen "
                           "(Treffer als NICHT AKTUELL markiert)")
-    sea.add_argument("--detail", dest="detail", action="store_true",
-                     help="bei genau einem Treffer Detail-Sicht öffnen")
-    _add_json(sea)
-    _add_school_year_arg(sea)
-    sea.set_defaults(func=cmd_search)
+    _add_json(leh)
+    _add_school_year_arg(leh)
+    leh.set_defaults(func=cmd_lehrer)
 
     # -- intern (versteckt) --
     inter = sub.add_parser(
@@ -709,7 +738,13 @@ def main() -> int:
     _add_school_year_arg(rst)
     rst.set_defaults(func=cmd_rest)
 
+    _attach_parsers(p)
+
     argv = sys.argv[1:]
+    if not argv:
+        # Kein Befehl: volle Hilfe, dokumentierter Exit 1.
+        p.print_help()
+        return 1
     # KLASSE/FACH (enthält immer `/`, Subs nie) wird vorab herausgezogen:
     # ein `nargs="?"`-Positionsargument vor Subparsern deutet argparse
     # sonst als Unterbefehl (1 Token) bzw. frisst den Sub (2 Token nach
@@ -717,21 +752,30 @@ def main() -> int:
     # übersprungen. Nach dem Parsen wieder einsetzen.
     adresse = None
     argv, adresse = _extract_adresse(argv)
-    args = p.parse_args(argv)
-    if getattr(args, "cmd", None) == "lesson":
-        args.klasse_fach = adresse
     try:
+        args = p.parse_args(argv)
+        if getattr(args, "cmd", None) == "lesson":
+            args.klasse_fach = adresse
         if args.cmd == "intern" and args.sub == "record":
             from webuntis_agent.recorder import main as rec_main
             return rec_main([f"--host={args.host}", f"--port={args.port}",
                              f"--domain={args.domain}"])
         if hasattr(args, "func"):
             return args.func(args)
-    except UnknownLessonError as e:
-        # Unbekannte --lsid (Server meldet generischen Internal server
-        # error): Anwender-Meldung nach stderr, kein Traceback.
+        p.print_help()
+        return 1
+    except UsageError as e:
+        if e.parser is not None:
+            _print_help_and_error(e.parser, str(e))
+        else:
+            print(f"Fehler: {e}", file=sys.stderr)
+        return e.exit_code
+    except WuError as e:
+        # Erwarteter Fehler: Meldung (+ optionaler Hinweis), kein Traceback.
         print(str(e), file=sys.stderr)
-        return 2
+        if e.hint:
+            print(e.hint, file=sys.stderr)
+        return e.exit_code
     except ModuleNotFoundError as e:
         print(
             f"Fehler: Python-Modul fehlt ({e.name}).\n\n"
@@ -742,9 +786,21 @@ def main() -> int:
             "PYTHON_BIN auf das venv-Python setzen.",
             file=sys.stderr,
         )
-        return 3
-    p.print_help()
-    return 1
+        return ConfigError.exit_code
+    except KeyboardInterrupt:
+        print("Abgebrochen.", file=sys.stderr)
+        return 130
+    except BrokenPipeError:
+        return 0
+    except Exception as e:
+        code = classify_exit(e)
+        if code == UnexpectedError.exit_code:
+            print(f"Interner Fehler: {type(e).__name__}: {e}",
+                  file=sys.stderr)
+            traceback.print_exc()
+        else:
+            print(str(e), file=sys.stderr)
+        return code
 
 
 if __name__ == "__main__":

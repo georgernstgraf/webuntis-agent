@@ -149,13 +149,13 @@ def test_cmd_roster_fallback_last_held(monkeypatch, capsys):
 
 
 def test_cmd_roster_no_units_at_all(monkeypatch, capsys):
+    from webuntis_agent.errors import NotFoundError
     m = _matrix()
     m["lessonPeriods"] = []
     monkeypatch.setattr(cli_lesson, "_make_client",
                         lambda args: _FakeClient(m))
-    rc = cli_lesson.cmd_lesson_roster(_args(datum="2026-09-20"))
-    assert rc == 2
-    assert "keine Lesson-Termine" in capsys.readouterr().err
+    with pytest.raises(NotFoundError, match="keine Lesson-Termine"):
+        cli_lesson.cmd_lesson_roster(_args(datum="2026-09-20"))
 
 
 def test_cmd_roster_json(monkeypatch, capsys):

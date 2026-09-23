@@ -308,11 +308,11 @@ obtainable within seconds from any live CLI call (`--json` outputs,
   eingeschrieben, Anwesenheit egal; 2 Plan-Calls, keine Matrix);
   mit --absenzen zusätzlich fehlt/gehalten der EIGENEN Lessons
   (je Lesson 1 Detail- + 1 Matrix-Call, gedrosselt)
-- `wu search TEXT [--wortteile] [--alle-jahre] [--detail]`
-  — Klassen/Lehrer/Schüler suchen; --detail öffnet die Detail-Sicht
+- `wu lehrer NAME [--wortteile] [--alle-jahre]`
+  — Lehrer suchen; Steckbrief (Kürzel/ID) + KV-Klassen
 - `wu offen pruefen --von <d> --bis <d> [--pause 1.5]`
   — Absenzenprüfung über offene Perioden (Write)
-- `wu raum suchen|groesse …` — Raumsuche/Raumgröße (Stubs, Exit 3;
+- `wu raum suchen|groesse …` — Raumsuche/Raumgröße (Stubs, Exit 7;
   Endpunkte dokumentiert, Umsetzung geplant)
 - `wu intern rpc <method> [params-json]`
   — generischer JSON-RPC-Passthrough (JSON-Ausgabe)
@@ -551,7 +551,7 @@ REST `/v1/teachers`, `/v1/teachers/{id}` → 403 Access Denied;
 ANONYMIZED (`personId:-1, displayName:""`, school-level privacy
 setting). The weekly timetable elements carry SHORT names only.
 
-Working path (CLI: `search`, `student`, `klasse … kv`):
+Working path (CLI: `student`, `lehrer`, `klasse … kv`):
 
 - `GET /WebUntis/api/rest/view/v1/timetable/search?q={text}&schoolyear={id}`
   (REST headers incl. Bearer JWT; schoolyear id via `getSchoolyears`,
@@ -567,7 +567,7 @@ Working path (CLI: `search`, `student`, `klasse … kv`):
   `students/overview` (`firstName`/`lastName`/`classInfo`). The search
   is schoolyear-sensitive: former students (e.g. id 12345 in SJ 21)
   vanish from current-year results.
-- CLI: `search <text>` (exact, current year default; `--wortteile` for
+- CLI: `lehrer <name>` (exact, current year default; `--wortteile` for
   the tokenizing merge via `search_timetable_tokens()`, `--alle-jahre`
   for older years, flagged NICHT AKTUELL), `student <name>`
   (tokenizing + AUTOMATIC fallback to ≤3 older years, flagged
@@ -585,8 +585,8 @@ Working path (CLI: `search`, `student`, `klasse … kv`):
   association in that context; otherwise the real class id (e.g.
   4137 = 5BAIF).
 
-CLI commands: `search <text> [--wortteile] [--alle-jahre] [--detail]`,
-`student <name> [--klasse X]`, `klasse <name> kv`,
+CLI commands: `student <name> [--klasse X]`,
+`lehrer <name> [--wortteile] [--alle-jahre]`, `klasse <name> kv`,
 `lesson --lsid X matrix [--klassen-id Y] [--nur-anwesende]`.
 
 ## Lessons listing (`klasse <class> faecher`)

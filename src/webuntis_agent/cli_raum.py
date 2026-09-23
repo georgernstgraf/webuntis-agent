@@ -11,7 +11,8 @@ eindeutig "not implemented" (Exit 3).
 from __future__ import annotations
 
 import argparse
-import sys
+
+from webuntis_agent.errors import NotImplementedYet
 
 _NOT_IMPLEMENTED = (
     "noch nicht implementiert — Endpunkte sind dokumentiert "
@@ -27,10 +28,10 @@ def cmd_raum_suchen(args: argparse.Namespace) -> int:
     erfüllen (--min-plaetze / --max-plaetze, z.B. klein < 20 oder
     groß >= 36). --nur-freie blendet belegte Räume aus.
     """
-    print(f"raum suchen: {_NOT_IMPLEMENTED}", file=sys.stderr)
-    print("geplant: freie Räume je Schulstunde + Kapazitätsfilter "
-          "(rooms/form liefert capacity je Raum)", file=sys.stderr)
-    return 3
+    raise NotImplementedYet(
+        f"raum suchen: {_NOT_IMPLEMENTED}. "
+        "geplant: freie Räume je Schulstunde + Kapazitätsfilter "
+        "(rooms/form liefert capacity je Raum)")
 
 
 def cmd_raum_groesse(args: argparse.Namespace) -> int:
@@ -39,5 +40,4 @@ def cmd_raum_groesse(args: argparse.Namespace) -> int:
     Geplante Semantik: capacity (Sitzplätze) + Gebäude/Typ eines Raums
     aus calendar-entry/rooms/form.
     """
-    print(f"raum groesse {args.raum}: {_NOT_IMPLEMENTED}", file=sys.stderr)
-    return 3
+    raise NotImplementedYet(f"raum groesse {args.raum}: {_NOT_IMPLEMENTED}")

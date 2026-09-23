@@ -92,9 +92,11 @@ git history, and submit each via the webuntis-agent CLI.
 
    ```bash
    .venv/bin/python -m webuntis_agent.cli offen eintragen \
-       --datei /tmp/opencode/batch_<timestamp>.json --pause 1.0
+       --datei /tmp/opencode/batch_<timestamp>.json --pause 1.0 --ausfuehren
    ```
 
+   - Writes are testlauf-default: without `--ausfuehren` only the batch is
+     shown (dry run), nothing is written.
    - One PUT per entry; block partners are auto-updated by the server.
    - `--pause 1.0` avoids triggering IP rate-limiting.
    - `topicId` null → server creates new topic (id=0).
@@ -104,8 +106,11 @@ git history, and submit each via the webuntis-agent CLI.
 
    ```bash
    .venv/bin/python -m webuntis_agent.cli offen pruefen \
-       --von 2025-09-01 --bis 2026-07-05 --pause 1.5
+       --von 2025-09-01 --bis 2026-07-05 --pause 1.5 --ausfuehren
    ```
+
+   - Also testlauf-default: add `--ausfuehren` to actually mark absences
+     as checked.
 
 7. **Report** which periods were submitted, failed, or skipped. Include
    `lessonDetailsUrl` from the `batch-set` output for browser verification.

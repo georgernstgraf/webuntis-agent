@@ -24,9 +24,10 @@ fill-open-periods workflow with human confirmation.
 | `cli_klasse.py` | `klasse` (Übersicht/Roster/Fächer/KV) — Fächer aus Klassen-Stundenplan |
 | `cli_lesson.py` | `lesson` (Roster/Matrix/Termine/Info/Teilnehmer/Lehrstoff/Absenzen zeigen/eintragen/entfernen/pruefen) + Plan-basierter Resolver |
 | `cli_student.py` | `student` (Suche + Detail: Klasse/KV/Lessons aus Plan-Join, Absenzen opt-in) |
+| `cli_lehrer.py` | `lehrer` (Suche + Steckbrief: Kürzel/ID, KV-Klassen) |
+| `errors.py` | Typisierte Fehlerhierarchie + Exit-Code-Taxonomie (`classify_exit`) |
 | `cli_offen.py` | `offen` (Arbeitsvorrat: Liste/Status/Verifizieren/Vorschlag/Eintragen/Festtexte/Prüfen) |
-| `cli_suche.py` | `search` (Suche + Detail-Dispatch Student/Lehrer/Klasse) |
-| `cli_raum.py` | `raum` (suchen/groesse — Stubs, Exit 3; Freie-Raum-Suche Folgeissue) |
+| `cli_raum.py` | `raum` (suchen/groesse — Stubs, Exit 7; Freie-Raum-Suche Folgeissue) |
 | `cli_intern.py` | `intern` (versteckt: login/logout/session/record/rpc/rest) |
 
 ## Man-Page & Drift-Test
@@ -57,8 +58,8 @@ fill-open-periods workflow with human confirmation.
 | `offen eintragen --datei` | bestätigte Lehrstoffe schreiben |
 | `offen festtexte` | SS/BESP-Festtexte (Testlauf-Standard) |
 | `offen pruefen` | Absenzenprüfung über Zeitraum/Datei (Write) |
-| `raum suchen\|groesse` | Stubs (Exit 3) — Endpunkte dokumentiert, Umsetzung geplant |
-| `search TEXT [--detail]` | Suche + Detail-Dispatch |
+| `raum suchen\|groesse` | Stubs (Exit 7) — Endpunkte dokumentiert, Umsetzung geplant |
+| `lehrer NAME` | Suche + Steckbrief (Kürzel/ID, KV-Klassen) |
 | `intern …` | versteckt: login/logout/session/record/rpc/rest |
 
 ## Lesson-Enumeration (seit 2026-09-21)
@@ -80,7 +81,7 @@ auf `$BASH_SOURCE` → ROOT immer der Repo-Root, egal ob per Symlink
 (z. B. `~/svn/georg/EDV/Toolset/wu`) aufgerufen. Interpreter:
 bevorzugt `.venv/bin/python`, Fallback `python3` mit Import-Probe
 (httpx/websockets, einzeln) + deutscher Setup-Anleitung
-(Exit 1). `cli.main()` fängt zusätzlich ModuleNotFoundError (Exit 3)
+(Exit 1). `cli.main()` fängt zusätzlich ModuleNotFoundError (Exit 8)
 für Direktaufrufe ohne `wu`.
 
 ## Skills (`.opencode/skills/`)

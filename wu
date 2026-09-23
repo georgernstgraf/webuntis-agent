@@ -2,8 +2,8 @@
 # Kurzbefehl für die webuntis-agent-CLI — symlink- und venv-fähig.
 #
 # Aufruf (auch über Symlinks, z. B. in ~/svn/.../Toolset):
-#   wu search "Erika Muster"
 #   wu student "Erika Muster"
+#   wu lehrer MK
 #   wu --help
 #
 # Interpreter-Auswahl: bevorzugt wird die Repo-venv (.venv/bin/python);
@@ -36,7 +36,7 @@ Anleitung — venv im Repo anlegen (Repo-Root: $ROOT):
 Danach funktioniert wu überall (auch über Symlinks) automatisch
 mit .venv/bin/python. Alternativ: PYTHON_BIN=/pfad/zum/python wu ...
 EOF
-        exit 1
+        exit 8
     fi
 fi
 

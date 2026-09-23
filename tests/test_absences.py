@@ -27,7 +27,7 @@ def test_pruefen_datei_uses_args_pause(tmp_path, capsys, monkeypatch):
     fake = _FakeClient()
     monkeypatch.setattr(cli_offen, "_make_client", lambda args: fake)
     args = argparse.Namespace(datei=str(f), pause=1.0, start=None, end=None,
-                              school_year_id=None)
+                              school_year_id=None, testlauf=False)
     # pause>0 with 2 items sleeps before the 2nd iteration — record it.
     slept = []
     monkeypatch.setattr(time, "sleep", slept.append)
@@ -38,3 +38,19 @@ def test_pruefen_datei_uses_args_pause(tmp_path, capsys, monkeypatch):
     out = json.loads(capsys.readouterr().out)
     assert [e["periodId"] for e in out] == [11, 22]
     assert all(e["ok"] for e in out)
+
+
+def test_pruefen_testlauf_writes_nothing(tmp_path, capsys, monkeypatch):
+    """--testlauf (default) must not call check_absences."""
+    items = [{"periodId": 11}, {"periodId": 22}]
+    f = tmp_path / "batch.json"
+    f.write_text(json.dumps(items), encoding="utf-8")
+    fake = _FakeClient()
+    monkeypatch.setattr(cli_offen, "_make_client", lambda args: fake)
+    args = argparse.Namespace(datei=str(f), pause=1.0, start=None, end=None,
+                              school_year_id=None, testlauf=True)
+    rc = cli_offen.cmd_offen_pruefen(args)
+    assert rc == 0
+    assert fake.checked == []
+    out = json.loads(capsys.readouterr().out)
+    assert out == [{"periodId": 11}, {"periodId": 22}]

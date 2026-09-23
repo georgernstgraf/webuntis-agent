@@ -29,8 +29,8 @@ def _subcommands() -> set[str]:
     src = _cli_sources()
     names = set(re.findall(r'add_parser\(\s*"([a-z][a-z-]*)"', src))
     # top-level commands must all be present (guards renames, too)
-    assert {"klasse", "lesson", "student", "offen",
-            "raum", "search", "intern"} <= names
+    assert {"klasse", "lesson", "student", "lehrer", "offen",
+            "raum", "intern"} <= names
     return names
 
 

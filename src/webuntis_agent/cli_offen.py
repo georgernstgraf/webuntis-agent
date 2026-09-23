@@ -240,9 +240,15 @@ def cmd_offen_eintragen(args: argparse.Namespace) -> int:
     Format: [{periodId, topicId, text, classId, start, end, date}, ...].
     Je Eintrag ein PUT (+Lesson-Details-URL bei classId/start/end/date).
     Zwischen PUTs --pause Sekunden (IP-Rate-Limit).
+    --testlauf (Standard) zeigt nur; mit --ausfuehren wird geschrieben.
     """
     from pathlib import Path
     items = json.loads(Path(args.datei).read_text(encoding="utf-8"))
+    if args.testlauf:
+        print(json.dumps(items, indent=2, ensure_ascii=False))
+        print(f"\nTESTLAUF: {len(items)} Eintrag/Einträge würden geschrieben "
+              "(kein Write); mit --ausfuehren ausführen.", file=sys.stderr)
+        return 0
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
     results = _submit_topic_entries(
@@ -311,19 +317,27 @@ def cmd_offen_pruefen(args: argparse.Namespace) -> int:
     Mit --datei: Perioden aus JSON-Datei ([{periodId}, ...]).
     Ohne: alle prüfbedürftigen Perioden im Zeitraum (Default: Schuljahr
     bis heute). Zwischen den Calls --pause Sekunden (IP-Rate-Limit).
+    --testlauf (Standard) zeigt nur; mit --ausfuehren wird geprüft.
     """
     from pathlib import Path
-    c = _make_client(args)
+    c = None
     if args.datei:
         items = json.loads(Path(args.datei).read_text(encoding="utf-8"))
         pids = [it["periodId"] for it in items]
     else:
-        c2, sy, periods = _fetch_open_periods(args)
-        c = c2
+        c, sy, periods = _fetch_open_periods(args)
         need = [p for p in periods if p.get("absCheckNeeded")]
         print(f"offene Perioden: {len(periods)}, "
               f"prüfbedürftig: {len(need)}", file=sys.stderr)
         pids = [p.get("period", {}).get("id") for p in need]
+    if args.testlauf:
+        print(json.dumps([{"periodId": p} for p in pids], indent=2,
+                         ensure_ascii=False))
+        print(f"\nTESTLAUF: {len(pids)} Periode(n) würden geprüft (kein "
+              "Write); mit --ausfuehren ausführen.", file=sys.stderr)
+        return 0
+    if c is None:
+        c = _make_client(args)
     results: list[dict] = []
     for i, pid in enumerate(pids):
         _sleep_between(i, args.pause)

@@ -4,8 +4,9 @@ Coding patterns, naming rules, and style agreements for this project.
 Follow these without question. Do not deviate unless explicitly told.
 
 ## CLI-Vokabular (deutsch, seit 2026-09-21)
-- Top-Level: `klasse`, `lesson`, `student`, `offen`, `raum` (Stubs),
-  `search`, `intern` (intern aus der Hilfe versteckt, s. DECISIONS.md)
+- Top-Level: `klasse`, `lesson`, `student`, `lehrer`, `offen`,
+  `raum` (Stubs), `intern` (intern aus der Hilfe versteckt,
+  s. DECISIONS.md)
 - Lesson-Adresse: genau EIN Positionsargument `KLASSE/FACH`
   (z.B. `3AHWII/SWP1x`); `--lsid` nur als direkter Ausweg
 - Optionen: `--schuljahr-id`, `--datum (YYYY-MM-DD|heute)`,
@@ -19,8 +20,28 @@ Follow these without question. Do not deviate unless explicitly told.
 - Jede (Sub-)Gruppe bekommt `description` + `epilog` mit Beispielen —
   `wu` ohne Argumente muss selbsterklärend sein
 - Absenzen-Schalter: `--absenzen` (opt-in, `student`) — Standard-Ausgabe
-  bleibt Matrix-frei; Writes tragen `--testlauf/--ausfuehren`
-  (`absenzen eintragen/entfernen`, `aufnehmen/anpassen`)
+  bleibt Matrix-frei
+- **ALLE Writes sind testlauf-Standard** (`--testlauf` = nur zeigen, kein
+  Write) und schreiben nur mit `--ausfuehren`: `lesson aufnehmen/anpassen`,
+  `lesson lehrstoff eintragen/aus-git`,
+  `lesson absenzen eintragen/entfernen/pruefen`,
+  `offen eintragen/festtexte/pruefen`. Einzige Ausnahme sind die bewusst
+  schreibfaehigen Roh-Passthroughs `intern rpc`/`intern rest`
+  (Variante B, kein Testlauf-Schalter — im Man-Page dokumentiert)
+
+## Fehler & Exit-Codes (seit 2026-09-23)
+- Fehler kommen aus `errors.py` (`WuError`-Subklassen), NICHT als
+  nackte `RuntimeError`/`SystemExit`. Jede Klasse trägt `exit_code`:
+  2 Usage, 3 NotFound, 4 Auth, 5 Network, 6 Server, 7 NotImplemented,
+  8 Config, 9 Unexpected.
+- `cli.main()` ist der EINZIGE Exit-Punkt; `classify_exit()` löst
+  gewrappte Fehler über die `__cause__`/`__context__`-Kette auf.
+- Argument-Prüfungen nutzen `usage_error(args, msg)` (volle
+  Unterbefehl-Hilfe + Fehlerzeile zuletzt, Exit 2); alle Parser sind
+  `_HelpfulParser`, damit auch argparse-Fehler die Hilfe zeigen.
+- „nicht gefunden“, Server-, Netzwerk- und Auth-Fehler NICHT als
+  Usage behandeln; Soft-Fail-Handler (`except RuntimeError: print`)
+  bleiben erlaubt, weil `WuError` von `RuntimeError` erbt.
 
 ## Naming
 - Class names from WebUntis are UPPERCASE (e.g. `5AHWII`); git folder names are lowercase (e.g. `5ahwii/`). Always lowercase for git pathspec.
@@ -28,16 +49,16 @@ Follow these without question. Do not deviate unless explicitly told.
 - Recording files: `{timestamp}_{domain_with_underscores}_{type}.jsonl`
 
 ## File Layout
-- `src/webuntis_agent/` — Python-Paket: recorder, client, gitlog, cli
-  (Verdrahtung) + cli_common (Infra), cli_klasse, cli_lesson, cli_student,
-  cli_offen, cli_suche, cli_intern, cli_raum
+- `src/webuntis_agent/` — Python-Paket: recorder, client, gitlog,
+  errors, cli (Verdrahtung) + cli_common (Infra), cli_klasse,
+  cli_lesson, cli_student, cli_lehrer, cli_offen, cli_raum, cli_intern
 - `scripts/` — shell scripts (brave-debug.sh) and helper scripts (show-cookies.py)
 - `recordings/` — gitignored, contains session cookies and captured traffic
 - `docs/WEBUNTIS_API.md` — authoritative API reference
 - `docs/ai/` — knowledge persistence files
 - `.opencode/skills/` — opencode skills (fill-open-periods)
 - `.env` — gitignored, contains WEBUNTIS_USER/PASSWORD
-- `wu` — CLI shortcut wrapper: resolves symlinks (`readlink -f`) so it works from any directory; prefers the repo's `.venv/bin/python`, falls back to `python3` with an import-probe of httpx/websockets and a German setup guide (exit 1) when modules are missing; `cli.main()` additionally catches ModuleNotFoundError (exit 3) for direct `python -m` calls
+- `wu` — CLI shortcut wrapper: resolves symlinks (`readlink -f`) so it works from any directory; prefers the repo's `.venv/bin/python`, falls back to `python3` with an import-probe of httpx/websockets and a German setup guide (exit 8 = ConfigError) when modules are missing; `cli.main()` additionally catches ModuleNotFoundError (exit 8) for direct `python -m` calls
 
 ## Doku-Schablonen (API-Referenz, seit 2026-09-21)
 - Jeder neu entdeckte Endpunkt bekommt in `docs/WEBUNTIS_API.md` EINE

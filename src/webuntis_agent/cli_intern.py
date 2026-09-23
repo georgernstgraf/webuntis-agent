@@ -15,6 +15,7 @@ from webuntis_agent.cli_common import (
     _make_client,
     _session_path,
 )
+from webuntis_agent.errors import AuthError
 
 
 def cmd_login(args: argparse.Namespace) -> int:
@@ -85,7 +86,7 @@ def cmd_session_status(args: argparse.Namespace) -> int:
 
     if args.json:
         print(json.dumps(status, indent=2, ensure_ascii=False))
-        return 0 if live["alive"] else 2
+        return 0 if live["alive"] else AuthError.exit_code
     print(f"Cache: {cache_path}")
     if cached:
         age_txt = (f"{status['ageSeconds']}s alt"
@@ -105,7 +106,7 @@ def cmd_session_status(args: argparse.Namespace) -> int:
         return 0
     print(f"live: Session NICHT lebendig ({live.get('error')})",
           file=sys.stderr)
-    return 2
+    return AuthError.exit_code
 
 
 def cmd_rpc(args: argparse.Namespace) -> int:

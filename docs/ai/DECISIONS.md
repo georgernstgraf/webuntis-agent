@@ -73,18 +73,19 @@ Superseded decisions are relocated to HISTORY.md.
 - **Tradeoff**: Old person data remains in git history (accepted); agents must actively route person data to LOCAL.md
 
 ## 2026-09-21: Domain-CLI (harter Schnitt, alles deutsch)
-- **Choice**: Befehle heißen `klasse`, `lesson`, `student`, `offen`,
-  `search`, `intern` — alte Namen (`students`, `lessons`, `lehrstoff`,
-  `absences`, `kv`, …) ersatzlos gestrichen, keine Aliase. Eine Lesson
-  wird immer als `KLASSE/FACH` adressiert (z.B. `3AHWII/SWP1x`).
-  Lehrstoff ist Unterbefehl von `lesson`, Absenzen stehen in `lesson`
-  (fehlt/gehalten je Schüler) und im `student`-Detail. `offen` ist die
-  Top-Level-Arbeitsvorratssicht offener Perioden. `search` bleibt
-  Top-Level (einzige englische Ausnahme — wird per Shell-Alias
-  aufgerufen) und dispatcht: Student→Student-Detail,
-  Lehrer→dessen Lessons, Klasse→Klassen-Sicht. `intern`
+- **Choice**: Befehle heißen `klasse`, `lesson`, `student`, `lehrer`,
+  `offen`, `raum`, `intern` — alte Namen (`students`, `lessons`,
+  `lehrstoff`, `absences`, `kv`, …) ersatzlos gestrichen, keine Aliase.
+  Eine Lesson wird immer als `KLASSE/FACH` adressiert
+  (z.B. `3AHWII/SWP1x`). Lehrstoff ist Unterbefehl von `lesson`,
+  Absenzen stehen in `lesson` (fehlt/gehalten je Schüler) und im
+  `student`-Detail. `offen` ist die Top-Level-Arbeitsvorratssicht
+  offener Perioden; `student` (Detail) und `lehrer` (Steckbrief +
+  KV-Klassen) sind die Namenssuche. `intern`
   (login/logout/session/record/rpc/rest) ist aus der Hilfe versteckt
   (`help=SUPPRESS`), bleibt aber als Escape-Hatch funktionsfähig.
+  (Das ursprünglich englische `search` wurde am 2026-09-23 durch
+  `lehrer` bzw. die eingebettete Suche in `student`/`klasse` ersetzt.)
 - **Reason**: Domain-Objekte (Klasse, Lesson, Student) statt
   Endpoint-Namen; WebUntis ist DACH-only → UI deutsch.
 - **Considered**: Alias-Modell (abgelehnt — zwei Namenswelten),
@@ -172,5 +173,100 @@ Superseded decisions are relocated to HISTORY.md.
   Standard-Workflow); Default Schuljahr-Start..Schuljahr-Ende
   (abgelehnt — Zukunft ist nie offen, UI kappt bei heute)
 - **Tradeoff**: ein zusätzlicher Meta-Call pro offen-Aufruf ohne
-  Zeitraum; Meta-Ausfall ohne expliziten Zeitraum wirft RuntimeError
+  Zeitraum; Meta-Ausfall ohne expliziten Zeitraum wirft ServerError
   statt zu raten
+
+## 2026-09-23: Exit-Code-Taxonomie + typisierte Fehler (`errors.py`)
+- **Choice**: `errors.py` definiert `WuError` (+ `UsageError`,
+  `NotFoundError`, `AuthError`, `NetworkError`, `ServerError`,
+  `NotImplementedYet`, `ConfigError`, `UnexpectedError`), jeder mit
+  eigenem `exit_code` (2–9). `classify_exit()` läuft die
+  `__cause__`/`__context__`-Kette ab, damit in Meldungstext gewrappte
+  Fehler ihren Root-Typ behalten. Der Client übersetzt
+  `httpx.TransportError`→NetworkError und klassifiziert via
+  `_check_status()` (401/403→Auth, 404→NotFound, 5xx→Server);
+  JSON-RPC-Fehler→ServerError. `cli.main()` ist der EINZIGE
+  Exit-Punkt (catch `WuError`/`UsageError`, `ModuleNotFoundError`→8,
+  `KeyboardInterrupt`→130, Rest→9 mit Traceback). Codes: 0 ok, 1 kein
+  Befehl, 2 Usage (HTTP 400), 3 Not-Found (404), 4 Auth (401/403),
+  5 Netzwerk, 6 Server (5xx), 7 nicht implementiert, 8 Konfig/Setup,
+  9 unerwartet.
+- **Reason**: Nutzer-Vorgabe — ein Nutzungsfehler soll ein
+  Verwendungsfehler sein (wie HTTP 400), und bei korrekter Eingabe
+  sollen Server-/Netz-/Not-Found-Fehler unterscheidbar sein.
+- **Considered**: sysexits (64+) abgelehnt — mappt schlecht auf die
+  Kategorien und bricht alle Doku; HTTP-Codes gespiegelt (400/404/…)
+  abgelehnt — 500+ überschreitet den Exit-Bereich 0–255.
+- **Tradeoff**: ~30 frühere `return 2`-Stellen und einige
+  `RuntimeError` wurden auf typisierte Fehler umgestellt; Tests, die
+  Exit 2 erwartet haben (UnknownLesson→3, raum-Stub→7), wurden
+  angepasst. `WuError` erbt von `RuntimeError`, damit
+  Soft-Fail-Handler (`except RuntimeError: print(...)`) unverändert
+  greifen.
+
+## 2026-09-23: `search` entfernt — `lehrer` + eingebettete Suche
+- **Choice**: Der generische Top-Level-Befehl `search` (samt
+  `cli_suche.py` und `_dispatch_*`) wurde entfernt. `student` (Detail)
+  und `klasse` (Kandidaten bei Namens-Fehltreffer via
+  `search_timetable_tokens`) tragen die Suche jetzt selbst; für den
+  einzigen verbleibenden Fall (Lehrer) gibt es den neuen Befehl
+  `lehrer NAME` (Kürzel/ID, KV-Klassen). `_find_klasse` schlägt bei
+  einem String-Fehltreffer Kandidaten vor und wirft `NotFoundError`
+  (Exit 3).
+- **Reason**: `search --detail` duplizierte Student-/Klassen-Detail
+  bereits; der Befehl war die einzige englische Ausnahme und eine
+  zweite Namenswelt. Nutzer-Vorgabe: die Suche in die Subbefehle
+  auflösen (oder streichen).
+- **Considered**: `search` behalten (abgelehnt — Duplikat), Lehrer-Suche
+  ganz streichen (abgelehnt — einzige Lücke).
+- **Tradeoff**: bricht Shell-Aliase auf `search`; Migrationshinweis in
+  README. `raum suchen` bleibt unberührt (deutsches Verb, kein
+  Suchbefehl).
+
+## 2026-09-23: Usage-Fehler drucken die volle Unterbefehl-Hilfe
+- **Choice**: `_HelpfulParser` (Basis ALLER Parser, Subparser erben via
+  `parser_class=type(self)`) überschreibt `error()` → volle Hilfe nach
+  stderr, danach die Fehlerzeile (Hilfe zuerst, Fehler zuletzt).
+  `usage_error(args, …)` tut dasselbe für handgeschriebene
+  Argument-Prüfungen und nutzt `args._parser` (via `_attach_parsers`
+  rekursiv an jeden Subparser gehängt). Beide werfen `UsageError`
+  (Exit 2); `main()` rendert zentral. Kein Befehl (`wu`) druckt die
+  Top-Hilfe und liefert den dokumentierten Exit 1.
+- **Reason**: Nutzer-Vorgabe — ein Verwendungsfehler soll dieselbe
+  Ausgabe zeigen wie `-h`, mit konsistenter Position der Fehlerzeile.
+- **Considered**: nur die „kein Befehl“-Fälle (abgelehnt — inkonsistent),
+  Fehlerzeile oben (abgelehnt — Nutzer wollte sie unten).
+- **Tradeoff**: jede Fehleingabe druckt jetzt die volle Hilfe (gewollt).
+
+## 2026-09-23: Alle Writes testlauf-Standard (`--testlauf`/`--ausfuehren`)
+- **Choice**: Jeder Befehl, der WebUntis-Daten schreibt, hat
+  `--testlauf` (Standard: nur zeigen, kein Write) und schreibt nur mit
+  `--ausfuehren`. Nachgerüstet: `lesson lehrstoff eintragen`,
+  `lesson absenzen pruefen`, `offen eintragen`, `offen pruefen`
+  (die übrigen Writes hatten den Schalter bereits). Ausgenommen:
+  `intern rpc`/`intern rest` (bewusst schreibfähiger Roh-Passthrough,
+  Variante B — JSON-RPC ist auch für Reads POST, Methoden-Gating wäre
+  falsch) und `intern login/logout` (nur Session-Cache, keine
+  WebUntis-Daten).
+- **Reason**: Nutzer-Vorgabe — keine versehentlichen Daten im System;
+  ein versehentlicher Write soll ohne explizites `--ausfuehren`
+  unmöglich sein. Deckt sich mit der bereits dokumentierten
+  Man-Page-Aussage (die zuvor für `offen eintragen`/`offen pruefen`
+  eine Ausnahme nannte).
+- **Considered**: `offen eintragen`/`offen pruefen` als bereits
+  menschlich bestätigten Schritt ohne Schalter lassen (abgelehnt —
+  Inkonsistenz und Restrisiko); `intern` ebenfalls gaten (abgelehnt —
+  Diagnose-Passthroughs wären unbrauchbar).
+- **Tradeoff**: Workflows/Skill/README müssen `--ausfuehren` ergänzen;
+  Testlauf-Ausgaben der vier Befehle sind neu (JSON-Plan bzw.
+  TESTLAUF-Zeile).
+
+## 2026-09-23: Git-Nutzung nicht mehr reglementiert (AGENTS.md)
+- **Choice**: Die Anweisung „Do NOT run `git` commands unless the user
+  asks you to commit" wurde aus `AGENTS.md` entfernt; jeder Agent
+  entscheidet selbst über Git. Die `recordings/`-Gitignore-Notiz bleibt.
+- **Reason**: Nutzer-Vorgabe.
+
+
+
+

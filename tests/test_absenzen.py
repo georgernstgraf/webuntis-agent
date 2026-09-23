@@ -6,6 +6,8 @@ No network, fictitious ids only (anonymized — no real ids/names).
 import argparse
 import json
 
+import pytest
+
 from webuntis_agent import cli_lesson
 from webuntis_agent.client import (
     Client,
@@ -228,13 +230,13 @@ def test_cmd_absenzen_entfernen_by_student_lookup(monkeypatch, capsys):
 
 
 def test_cmd_absenzen_entfernen_no_absence_found(monkeypatch, capsys):
+    from webuntis_agent.errors import NotFoundError
     fake = _AbsFakeClient()  # vm ohne absenceRows
     monkeypatch.setattr(cli_lesson, "_make_client", lambda args: fake)
     args = _abs_args(termin=608000, schueler_name="Erika Muster",
                      testlauf=False)
-    rc = cli_lesson.cmd_absenzen_entfernen(args)
-    assert rc == 2
-    assert "Keine Abwesenheit" in capsys.readouterr().err
+    with pytest.raises(NotFoundError, match="Keine Abwesenheit"):
+        cli_lesson.cmd_absenzen_entfernen(args)
 
 
 def test_cmd_absenzen_zeigen_termin_lists_rows(monkeypatch, capsys):

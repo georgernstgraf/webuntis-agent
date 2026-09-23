@@ -66,8 +66,8 @@ Output goes to `recordings/{timestamp}_network.jsonl` and
 
 ## Session
 
-Do NOT run `git` commands unless the user asks you to commit. The
-`recordings/` directory is gitignored because it contains session cookies.
+The `recordings/` directory is gitignored because it contains session
+cookies.
 
 ## Privacy
 

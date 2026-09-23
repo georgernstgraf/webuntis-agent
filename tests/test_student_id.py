@@ -6,6 +6,8 @@ No network, fictitious data only (anonymized — no real ids/names).
 import argparse
 import json
 
+import pytest
+
 from webuntis_agent import cli_student
 
 
@@ -113,12 +115,12 @@ def test_cmd_student_id_without_class_no_detail(monkeypatch, capsys):
 
 
 def test_cmd_student_name_and_id_rejected(capsys):
-    rc = cli_student.cmd_student(_args(name="Muster", student_id=4711))
-    assert rc == 2
-    assert "genau eins" in capsys.readouterr().err
+    from webuntis_agent.errors import UsageError
+    with pytest.raises(UsageError, match="genau eins"):
+        cli_student.cmd_student(_args(name="Muster", student_id=4711))
 
 
 def test_cmd_student_neither_rejected(capsys):
-    rc = cli_student.cmd_student(_args())
-    assert rc == 2
-    assert "genau eins" in capsys.readouterr().err
+    from webuntis_agent.errors import UsageError
+    with pytest.raises(UsageError, match="genau eins"):
+        cli_student.cmd_student(_args())

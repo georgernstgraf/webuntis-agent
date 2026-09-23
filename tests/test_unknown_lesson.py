@@ -83,7 +83,7 @@ def test_cli_main_reports_unknown_lsid_without_traceback(
     monkeypatch.setattr(sys, "argv",
                         ["wu", "lesson", "--lsid", "22288", "matrix"])
     rc = cli_module.main()
-    assert rc == 2
+    assert rc == 3
     captured = capsys.readouterr()
     assert "22288" in captured.err
     assert "gibt es" in captured.err

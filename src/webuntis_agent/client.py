@@ -18,40 +18,47 @@ from typing import Any
 
 import httpx
 
+from webuntis_agent.errors import (
+    AuthError,
+    ConfigError,
+    NetworkError,
+    NotFoundError,
+    ServerError,
+    UnknownLessonError,
+)
+
+# Re-exported for backwards compatibility (`from ...client import
+# UnknownLessonError`); defined in errors.py.
+__all__ = ["UnknownLessonError", "Client", "DEFAULT_HOST", "DEFAULT_SCHOOL"]
+
 DEFAULT_HOST = "https://spengergasse.webuntis.com"
 DEFAULT_SCHOOL = "spengergasse"
 
 
-class UnknownLessonError(RuntimeError):
-    """A lesson id (lsId) unknown to the server in the active schoolyear.
+def _check_status(r: httpx.Response) -> None:
+    """Raise a typed error for a non-2xx/3xx response.
 
-    The server answers getStudentLessonPeriodMatrix for bogus ids with a
-    generic `code 0: Internal server error` instead of "not found"
-    (verified with ids 1, 22288, 999999999 in every schoolyear) — so we
-    map that signature to a message the user can act on. Carries `lsid`
-    and `schoolyear_id` for programmatic use.
+    HTTP method does not imply auth here, so this only classifies by
+    status code: 401/403 → AuthError, 404 → NotFoundError, 5xx (and
+    any other unexpected code) → ServerError.
     """
-
-    def __init__(self, lsid: int, schoolyear_id: int,
-                 schoolyear_label: str) -> None:
-        self.lsid = lsid
-        self.schoolyear_id = schoolyear_id
-        super().__init__(
-            f"lsId {lsid} gibt es im Schuljahr {schoolyear_label} "
-            f"(id {schoolyear_id}) nicht "
-            "(Server meldet: Internal server error — Hinweis: die Matrix "
-            "ist rechte-beschränkt, fremde Lessons sind nicht lesbar). "
-            "Gültige eigene lsIds z.B. via "
-            "'wu offen liste --von <von> --bis <bis>' oder "
-            "'wu student <Name> --absenzen --json'."
-        )
+    if r.status_code < 400:
+        return
+    msg = (f"HTTP {r.status_code} für {r.request.method} "
+           f"{r.request.url}: {r.text[:200]}")
+    if r.status_code in (401, 403):
+        raise AuthError(msg)
+    if r.status_code == 404:
+        raise NotFoundError(msg)
+    raise ServerError(msg)
 
 
 def _request_with_retry(
     http: httpx.Client, method: str, url: str, *,
     client: "Client | None" = None,
     retries: int = 3, backoff: float = 2.0,
-    retry_on: tuple = (httpx.ConnectError, httpx.ReadError),
+    retry_on: tuple = (httpx.ConnectError, httpx.ReadError,
+                       httpx.TimeoutException),
     **kwargs: Any,
 ) -> httpx.Response:
     """Send a request with exponential backoff on transient connection errors.
@@ -77,16 +84,18 @@ def _request_with_retry(
         except retry_on as e:
             last_exc = e
             if attempt == retries:
-                raise
+                raise NetworkError(f"Netzwerkfehler: {e}") from e
             sleep_s = backoff * (2 ** attempt)
             time.sleep(sleep_s)
             continue
         if client is not None and client._auth_lost(r):
             client.relogin()
-            return _send()
+            try:
+                return _send()
+            except httpx.TransportError as e:
+                raise NetworkError(f"Netzwerkfehler: {e}") from e
         return r
-    assert last_exc is not None
-    raise last_exc
+    raise NetworkError(f"Netzwerkfehler: {last_exc}")
 
 # WebUntis subject short name -> candidate GRG-* repo names (incl. -T
 # teacher companions). Matched by prefix so that group/level variants
@@ -259,10 +268,10 @@ def parse_dojo_viewmodel(html_text: str) -> dict[str, Any]:
     txt = _html.unescape(html_text)
     m = re.search(r"viewModel: ", txt)
     if not m:
-        raise RuntimeError("viewModel nicht gefunden (Layoutänderung?)")
+        raise ServerError("viewModel nicht gefunden (Layoutänderung?)")
     vm, _ = json.JSONDecoder().raw_decode(txt[m.end():])
     if not isinstance(vm, dict):
-        raise RuntimeError("viewModel ist kein JSON-Objekt")
+        raise ServerError("viewModel ist kein JSON-Objekt")
     return vm
 
 
@@ -397,7 +406,7 @@ class Session:
             elif c.get("name") == "schoolname":
                 schoolname = c.get("value", "")
         if not jsessionid or not schoolname:
-            raise ValueError("Missing JSESSIONID or schoolname cookie")
+            raise AuthError("Missing JSESSIONID or schoolname cookie")
         return cls(jsessionid=jsessionid, schoolname_cookie=schoolname)
 
     @property
@@ -416,7 +425,7 @@ class JwtPayload:
 def _decode_jwt(token: str) -> JwtPayload:
     parts = token.split(".")
     if len(parts) < 2:
-        raise ValueError("malformed JWT")
+        raise AuthError("malformed JWT")
     payload = parts[1]
     payload += "=" * (-len(payload) % 4)
     data = json.loads(base64.urlsafe_b64decode(payload))
@@ -428,7 +437,7 @@ def _decode_jwt(token: str) -> JwtPayload:
             exp=int(data["exp"]),
         )
     except KeyError as e:
-        raise ValueError(f"JWT missing field: {e}") from e
+        raise AuthError(f"JWT missing field: {e}") from e
 
 
 class Client:
@@ -470,7 +479,7 @@ class Client:
 
     def login(self) -> None:
         if not self.user or not self.password:
-            raise RuntimeError(
+            raise ConfigError(
                 "WEBUNTIS_USER / WEBUNTIS_PASSWORD not set "
                 "(copy .env.example to .env)"
             )
@@ -489,7 +498,7 @@ class Client:
         # sets a fresh, anonymous JSESSIONID). Verify via the SPA
         # bootstrap page, which carries "anonymousMode":true|false.
         if r.status_code != 302:
-            raise RuntimeError(
+            raise AuthError(
                 f"login failed (status {r.status_code})"
             )
         v = self.http.get(
@@ -502,14 +511,14 @@ class Client:
             # fail-closed: without the marker we cannot verify the
             # login (e.g. after a SPA layout change) — refuse to
             # treat the session as authenticated.
-            raise RuntimeError(
+            raise ServerError(
                 "login could not be verified: anonymousMode marker "
                 "missing on the SPA bootstrap page (layout change?)"
             )
         if m.group(1) == "true":
             err = re.search(r'"loginError":"([^"]*)"', v.text)
             detail = err.group(1) if err else "session not authenticated"
-            raise RuntimeError(
+            raise AuthError(
                 f"login rejected: {detail} (wrong credentials, or a "
                 f"temporary login lockout/captcha after failed attempts)"
             )
@@ -524,7 +533,7 @@ class Client:
             jsessionid = r.cookies.get("JSESSIONID", "")
             schoolname = r.cookies.get("schoolname", "")
         if not jsessionid:
-            raise RuntimeError("login did not set JSESSIONID")
+            raise AuthError("login did not set JSESSIONID")
         self._session = Session(
             jsessionid=jsessionid,
             schoolname_cookie=schoolname or (
@@ -633,7 +642,7 @@ class Client:
             headers=lambda: {"Cookie": self.session.cookie_header},
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         self._jwt = r.text.strip()
         self._jwt_payload = _decode_jwt(self._jwt)
         return self._jwt
@@ -663,7 +672,7 @@ class Client:
                 headers=lambda: self._rest_headers(),
                 client=self,
             )
-            r.raise_for_status()
+            _check_status(r)
             self._schoolyears = r.json()
         return self._schoolyears
 
@@ -678,7 +687,7 @@ class Client:
             end = self._parse_iso(dr.get("end", ""))
             if start <= when <= end:
                 return int(sy["id"])
-        raise RuntimeError(
+        raise NotFoundError(
             f"no schoolyear matches {when.isoformat()} — schoolyear ids "
             "are NOT derivable arithmetically (see docs/ai/PITFALLS.md); "
             "resolve dynamically or override with --schuljahr-id"
@@ -729,7 +738,7 @@ class Client:
             ),
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         try:
             return r.json()
         except ValueError:
@@ -759,7 +768,7 @@ class Client:
             ),
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         return r.json()
 
     def get_open_periods_meta(self,
@@ -787,7 +796,7 @@ class Client:
                 school_year_id=school_year_id),
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         return r.json()
 
     def set_lesson_topic(self, period_id: int, topic_id: int, text: str,
@@ -812,7 +821,7 @@ class Client:
             ),
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         return r.json()
 
     # ----- JSON-RPC (read-only, public) --------------------------------
@@ -833,7 +842,7 @@ class Client:
             },
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         data = r.json()
         self._raise_jsonrpc_error(data, method)
         return data
@@ -854,7 +863,7 @@ class Client:
                          if k not in ("code", "message")}
             else:
                 code, msg, extra = "?", err, {}
-            raise RuntimeError(
+            raise ServerError(
                 f"JSON-RPC {method} failed (code {code}): {msg}"
                 + (f" {extra}" if extra else "")
             )
@@ -898,7 +907,7 @@ class Client:
             headers=lambda: self._rest_headers(),
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         return r.json().get("results", [])
 
     def search_timetable_tokens(
@@ -973,7 +982,7 @@ class Client:
             headers=lambda: self._rest_headers(),
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         return r.json()
 
     def get_weekly_timetable_elements(self, class_id: int,
@@ -991,7 +1000,7 @@ class Client:
             headers=lambda: {"Cookie": self.session.cookie_header},
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         payload = r.json()
         result = payload["data"]["result"]
         return result["data"]["elements"]
@@ -1029,7 +1038,7 @@ class Client:
                 school_year_id=school_year_id),
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         return r.json()
 
     def get_calendar_entry_detail(
@@ -1058,7 +1067,7 @@ class Client:
                 school_year_id=school_year_id),
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         return r.json()
 
     def get_rooms_form(self, start_datetime: str, end_datetime: str,
@@ -1081,7 +1090,7 @@ class Client:
                 school_year_id=school_year_id),
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         return r.json()
 
     # ----- Absences (Absenzenkontrolle) ---------------------------------
@@ -1103,10 +1112,10 @@ class Client:
             },
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         m = re.search(r'name="_csrf"\s+value="([^"]+)"', r.text)
         if not m:
-            raise RuntimeError(
+            raise ServerError(
                 f"could not extract _csrf from classregpage.do "
                 f"for period {period_id}"
             )
@@ -1140,7 +1149,7 @@ class Client:
             },
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         return r.json()
 
     def get_classreg_viewmodel(self, period_id: int,
@@ -1169,10 +1178,10 @@ class Client:
             },
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         m = re.search(r'name="_csrf"\s+value="([^"]+)"', r.text)
         if not m:
-            raise RuntimeError(
+            raise ServerError(
                 f"could not extract _csrf from classregpage.do "
                 f"for period {period_id}"
             )
@@ -1211,7 +1220,7 @@ class Client:
             },
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         return r.json()
 
     def delete_absence(self, absence: dict[str, Any],
@@ -1228,7 +1237,7 @@ class Client:
         """
         absence_id = absence.get("id")
         if absence_id is None:
-            raise RuntimeError("absence row ohne id")
+            raise ServerError("absence row ohne id")
         start_time = int(absence.get("startTime") or 0)
         end_time = int(absence.get("endTime") or 0)
         start_date = _untis_date_to_iso(absence.get("startDate")
@@ -1252,10 +1261,10 @@ class Client:
             },
             client=self,
         )
-        dlg.raise_for_status()
+        _check_status(dlg)
         m = re.search(r'name="_csrf"\s+value="([^"]+)"', dlg.text)
         if not m:
-            raise RuntimeError(
+            raise ServerError(
                 f"could not extract _csrf from absencedlg.do "
                 f"for absence {absence_id}"
             )
@@ -1288,7 +1297,7 @@ class Client:
             },
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         return r.json()
 
     # ----- Student Lesson Period Matrix (Schüler-Aufnahme) --------------
@@ -1305,10 +1314,10 @@ class Client:
             headers=lambda: {"Cookie": self.session.cookie_header},
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         m = re.search(r'"csrfToken":"([^"]+)"', r.text)
         if not m:
-            raise RuntimeError("could not extract csrfToken from embedded.do")
+            raise ServerError("could not extract csrfToken from embedded.do")
         csrf = m.group(1)
 
         def _json_headers() -> dict:
@@ -1331,7 +1340,7 @@ class Client:
             headers=_json_headers,
             client=self,
         )
-        r0.raise_for_status()
+        _check_status(r0)
         self._raise_jsonrpc_error(r0.json(), "setSchoolyear")
 
         r = _request_with_retry(
@@ -1342,7 +1351,7 @@ class Client:
             headers=_json_headers,
             client=self,
         )
-        r.raise_for_status()
+        _check_status(r)
         data = r.json()
         self._raise_jsonrpc_error(data, method)
         return data

@@ -18,8 +18,10 @@ from webuntis_agent.cli_common import (
     _find_klasse,
     _make_client,
     _sleep_between,
+    usage_error,
 )
 from webuntis_agent.cli_klasse import _kv_info
+from webuntis_agent.errors import ServerError
 
 
 def _suchen(c, sy: int, query: str, fallback: bool, alle_jahre: bool,
@@ -264,7 +266,7 @@ def _print_student_detail(c, sy: int, s: dict,
                           pause: float = 1.0) -> None:
     """Menschliche Detail-Ausgabe eines aktuellen Schüler-Treffers.
 
-    Einzige Quelle für `student`-Detail und `search --detail` (Dispatch).
+    Einzige Quelle für die `student`-Detail-Ausgabe.
     """
     name = (f"{s.get('firstName', '')} {s.get('lastName', '')}".strip()
             or s.get("displayName", ""))
@@ -326,7 +328,7 @@ def _suchen_per_id(c, current_id: int, student_id: int) -> list[dict]:
     try:
         overview = c.get_students_overview()
     except Exception as e:
-        raise RuntimeError(f"students/overview fehlgeschlagen ({e})")
+        raise ServerError(f"students/overview fehlgeschlagen ({e})") from e
     for s in overview.get("students", []):
         if s.get("id") == student_id:
             ci = s.get("classInfo") or {}
@@ -349,19 +351,13 @@ def _suchen_per_id(c, current_id: int, student_id: int) -> list[dict]:
 def cmd_student(args: argparse.Namespace) -> int:
     """Alle Infos zu einem Schüler: Treffer, Klasse, KV, Fächer, Absenzen."""
     if (args.name is None) == (getattr(args, "student_id", None) is None):
-        print("entweder NAME oder --id angeben (genau eins)",
-              file=sys.stderr)
-        return 2
+        usage_error(args, "entweder NAME oder --id angeben (genau eins)")
     c = _make_client(args)
     override = args.school_year_id
     sy = c.resolve_schoolyear_id(override=override)
     if getattr(args, "student_id", None) is not None:
         query: str | int = args.student_id
-        try:
-            students = _suchen_per_id(c, sy, args.student_id)
-        except RuntimeError as e:
-            print(str(e), file=sys.stderr)
-            return 2
+        students = _suchen_per_id(c, sy, args.student_id)
         current_id, years = sy, [sy]
     else:
         query = args.name

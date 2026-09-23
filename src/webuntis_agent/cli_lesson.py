@@ -24,6 +24,11 @@ from webuntis_agent.cli_common import (
     _resolve_topic_id,
     _sleep_between,
     _split_klasse_fach,
+    usage_error,
+)
+from webuntis_agent.errors import (
+    NotFoundError,
+    ServerError,
 )
 
 if TYPE_CHECKING:
@@ -151,13 +156,13 @@ def _lsid_from_detail(c: Client, class_id: int,
         1, class_id, _entry_dt(entry, "start"), _entry_dt(entry, "end"))
     ces = detail.get("calendarEntries") or []
     if not ces:
-        raise RuntimeError(
+        raise ServerError(
             f"calendar-entry/detail leer für {entry.get('date')} "
             f"{entry.get('start')}")
     lesson = ces[0].get("lesson") or {}
     lsid = lesson.get("lessonId")
     if lsid is None:
-        raise RuntimeError(
+        raise ServerError(
             f"calendar-entry/detail ohne lessonId für "
             f"{entry.get('date')} {entry.get('start')}")
     return int(lsid)
@@ -207,7 +212,7 @@ def _resolve_lesson_from_class_subject(
         matches = [e for e in entries
                    if _subject_matches(e.get("subject"), subject)]
         if not matches:
-            raise RuntimeError(
+            raise NotFoundError(
                 f"kein Fach '{subject}' im Klassen-Stundenplan "
                 f"{week[0]}..{week[1]} der Klasse {k.get('name')}")
         groups = group_timetable_lessons(matches)
@@ -302,7 +307,7 @@ def _resolve_lesson_from_open_periods(
         avail = sorted({(e["class"] or "", e["subject"] or "")
                         for e in entries})
         hints = ", ".join(f"{a}/{b}" for a, b in avail if a.lower() == cls_l)
-        raise RuntimeError(
+        raise NotFoundError(
             f"keine Lesson für {class_name}/{subject} (weder "
             f"Klassen-Stundenplan noch offene Perioden "
             f"{start}..{end})" + (f"; verfügbar für {class_name}: {hints}"
@@ -341,16 +346,11 @@ def _resolve_lsid(c: Client, args: argparse.Namespace,
     if args.lsid is not None:
         return args.lsid, None
     if not getattr(args, "klasse_fach", None):
-        print("entweder KLASSE/FACH oder --lsid angeben "
-              "(z.B. `lesson 3AHWII/SWP1x`)", file=sys.stderr)
-        raise SystemExit(2)
+        usage_error(args, "entweder KLASSE/FACH oder --lsid angeben "
+                          "(z.B. `lesson 3AHWII/SWP1x`)")
     klasse, fach = _split_klasse_fach(args.klasse_fach)
-    try:
-        lesson = _resolve_lesson_from_class_subject(
-            c, sy, klasse, fach, ref_date=ref_date)
-    except RuntimeError as e:
-        print(str(e), file=sys.stderr)
-        raise SystemExit(2)
+    lesson = _resolve_lesson_from_class_subject(
+        c, sy, klasse, fach, ref_date=ref_date)
     print(f"aufgelöst {klasse}/{fach} -> lsId {lesson['lsId']} "
           f"({lesson['class']}/{lesson['subject']})",
           file=sys.stderr)
@@ -438,8 +438,7 @@ def cmd_lesson_roster(args: argparse.Namespace) -> int:
     requested_day = day
     if ymd not in period_dates:
         if not period_dates:
-            print(f"keine Lesson-Termine für lsId {lsid}", file=sys.stderr)
-            return 2
+            raise NotFoundError(f"keine Lesson-Termine für lsId {lsid}")
         # Zukunft-zuerst-Fallback: nächster kommender Termin, sonst letzter
         # gehaltener
         future = [d for d in period_dates if d > ymd]
@@ -546,8 +545,7 @@ def cmd_lesson_termine(args: argparse.Namespace) -> int:
     periods = sorted(result.get("lessonPeriods", []),
                      key=lambda p: p.get("date", 0))
     if not periods:
-        print(f"keine Lesson-Termine für lsId {lsid}", file=sys.stderr)
-        return 2
+        raise NotFoundError(f"keine Lesson-Termine für lsId {lsid}")
     von = args.start or f"{periods[0]['date'] // 10000:04d}-01-01"
     bis = args.end or "9999-12-31"
     offen_ids: set[int] = set()
@@ -736,9 +734,8 @@ def cmd_lesson_aufnehmen(args: argparse.Namespace) -> int:
         target = next((s for s in all_students if s["id"] == args.schueler_id),
                       None)
         if target is None:
-            print(f"Schüler-ID {args.schueler_id} nicht in der Matrix gefunden",
-                  file=sys.stderr)
-            return 2
+            raise NotFoundError(
+                f"Schüler-ID {args.schueler_id} nicht in der Matrix gefunden")
     else:
         needle = args.schueler_name.lower()
         hits = [s for s in all_students
@@ -747,9 +744,9 @@ def cmd_lesson_aufnehmen(args: argparse.Namespace) -> int:
             for h in hits:
                 print(f"  Kandidat: id={h['id']} {h['name']} "
                       f"klasse={h['klasse']}", file=sys.stderr)
-            print(f"Schülername '{args.schueler_name}' trifft {len(hits)} "
-                  "Schüler; --schueler-id verwenden", file=sys.stderr)
-            return 2
+            usage_error(args,
+                        f"Schülername '{args.schueler_name}' trifft "
+                        f"{len(hits)} Schüler; --schueler-id verwenden")
         target = hits[0]
 
     students_payload = _build_students_payload(
@@ -799,20 +796,17 @@ def cmd_lesson_anpassen(args: argparse.Namespace) -> int:
     add_ids = args.aufnehmen_id or []
     remove_ids = args.entfernen_id or []
     if not add_ids and not remove_ids:
-        print("nichts zu tun: --aufnehmen-id und/oder --entfernen-id angeben",
-              file=sys.stderr)
-        return 2
+        usage_error(args, "nichts zu tun: --aufnehmen-id und/oder "
+                          "--entfernen-id angeben")
     overlap = set(add_ids) & set(remove_ids)
     if overlap:
-        print(f"IDs gleichzeitig aufgenommen und entfernt: {sorted(overlap)}",
-              file=sys.stderr)
-        return 2
+        usage_error(args, f"IDs gleichzeitig aufgenommen und entfernt: "
+                          f"{sorted(overlap)}")
     by_id = {s["id"]: s for s in all_students}
     for sid in add_ids + remove_ids:
         if sid not in by_id:
-            print(f"Schüler-ID {sid} nicht in der Matrix gefunden",
-                  file=sys.stderr)
-            return 2
+            raise NotFoundError(
+                f"Schüler-ID {sid} nicht in der Matrix gefunden")
 
     keep = _build_students_payload(
         all_students, args.klassen_id, add_ids, remove_ids, lesson_dates)
@@ -852,13 +846,21 @@ def cmd_lehrstoff_zeigen(args: argparse.Namespace) -> int:
 
 
 def cmd_lehrstoff_eintragen(args: argparse.Namespace) -> int:
-    """Lehrstoff für einen Termin eintragen (einzelner Write)."""
+    """Lehrstoff für einen Termin eintragen (einzelner Write).
+
+    --testlauf (Standard) zeigt nur; mit --ausfuehren wird geschrieben.
+    """
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
     if args.thema is None:
         args.thema = _resolve_topic_id(c, sy, args.termin, None)
         print(f"aufgelöste thema-id={args.thema}")
     text = _read_text_arg(args)
+    if args.testlauf:
+        print(f"TESTLAUF: würde eintragen termin={args.termin} "
+              f"thema-id={args.thema} text={text!r}")
+        print("Schreiben mit --ausfuehren.", file=sys.stderr)
+        return 0
     res = c.set_lesson_topic(
         args.termin, args.thema, text,
         school_year_id=sy,
@@ -914,9 +916,8 @@ def cmd_lehrstoff_aus_git(args: argparse.Namespace) -> int:
             print(f"würde eintragen: termin={args.termin} text={text!r}")
             return 0
     if args.termin is None or args.thema is None:
-        print("nötig: --termin-id und --thema-id (oder --testlauf)",
-              file=sys.stderr)
-        return 2
+        usage_error(args, "nötig: --termin-id und --thema-id "
+                          "(oder --testlauf)")
     client = _make_client(args)
     sy = client.resolve_schoolyear_id(override=args.school_year_id)
     res = client.set_lesson_topic(args.termin, args.thema, text,
@@ -1014,11 +1015,12 @@ def cmd_absenzen_zeigen(args: argparse.Namespace) -> int:
     return 0
 
 
-def _resolve_schueler(c: Client, args: argparse.Namespace) -> dict | None:
+def _resolve_schueler(c: Client, args: argparse.Namespace) -> dict:
     """Schüler über --schueler-id oder --schueler-name eindeutig auflösen.
 
-    Namenssuche via students/overview (volle Namen, tokenisierend);
-    bei Mehrdeutigkeit Kandidaten nach stderr + None. Kein Matrix-Call.
+    Namenssuche via students/overview (volle Namen, tokenisierend).
+    Kein Matrix-Call. Fehlt die Angabe → UsageError; nicht gefunden/
+    mehrdeutig → NotFoundError bzw. UsageError (Kandidaten nach stderr).
     """
     from webuntis_agent.client import (
         student_matches_overview,
@@ -1028,8 +1030,8 @@ def _resolve_schueler(c: Client, args: argparse.Namespace) -> dict | None:
         try:
             overview = c.get_students_overview()
         except Exception as e:
-            print(f"students/overview fehlgeschlagen ({e})", file=sys.stderr)
-            return None
+            raise ServerError(
+                f"students/overview fehlgeschlagen ({e})") from e
         for s in overview.get("students", []):
             if s.get("id") == args.schueler_id:
                 ci = s.get("classInfo") or {}
@@ -1037,19 +1039,17 @@ def _resolve_schueler(c: Client, args: argparse.Namespace) -> dict | None:
                         "name": f"{s.get('lastName', '')} "
                                 f"{s.get('firstName', '')}".strip(),
                         "class": ci.get("name", "")}
-        print(f"Schüler-ID {args.schueler_id} nicht im aktuellen Roster",
-              file=sys.stderr)
-        return None
+        raise NotFoundError(
+            f"Schüler-ID {args.schueler_id} nicht im aktuellen Roster")
     if not args.schueler_name:
-        print("entweder --schueler-id oder --schueler-name angeben",
-              file=sys.stderr)
-        return None
+        usage_error(args, "entweder --schueler-id oder --schueler-name "
+                          "angeben")
     tokens = tokenize_search_query(args.schueler_name)
     try:
         overview = c.get_students_overview()
     except Exception as e:
-        print(f"students/overview fehlgeschlagen ({e})", file=sys.stderr)
-        return None
+        raise ServerError(
+            f"students/overview fehlgeschlagen ({e})") from e
     hits = []
     for s in overview.get("students", []):
         if student_matches_overview(s, tokens):
@@ -1062,42 +1062,35 @@ def _resolve_schueler(c: Client, args: argparse.Namespace) -> dict | None:
         for h in hits:
             print(f"  Kandidat: id={h['id']} {h['name']} "
                   f"Klasse={h['class']}", file=sys.stderr)
-        print(f"Schülername '{args.schueler_name}' trifft {len(hits)} "
-              "Schüler; --schueler-id verwenden", file=sys.stderr)
-        return None
+        usage_error(args, f"Schülername '{args.schueler_name}' trifft "
+                          f"{len(hits)} Schüler; --schueler-id verwenden")
     return hits[0]
 
 
 def _termin_und_block(c: Client, args: argparse.Namespace,
-                      sy: int) -> tuple[int, bool] | None:
+                      sy: int) -> tuple[int, bool]:
     """Termin (ttid) + Block-Flag für Absenz-Befehle auflösen.
 
     --termin-id direkt; sonst --datum (Standard heute) über den
     KLASSE/FACH-Resolver: der Entry am Tag ( sonst nächster Zukunfts-,
     sonst letzter Termin) liefert die erste Perioden-ID des Blocks.
     Block ist Standard (--kein-block nur mit --termin-id sinnvoll).
-    Liefert None nach Fehlermeldung (Aufrufer beendet mit 2).
     """
     block = not getattr(args, "kein_block", False)
     if args.termin is not None:
         return args.termin, block
     if not block:
-        print("--kein-block braucht --termin-id (welche Einzelstunde "
-              "am Tag ist sonst nicht eindeutig)", file=sys.stderr)
-        return None
+        usage_error(args, "--kein-block braucht --termin-id (welche "
+                          "Einzelstunde am Tag ist sonst nicht eindeutig)")
     day = _datum_arg(getattr(args, "datum", "heute"))
     klasse, fach = _split_klasse_fach(args.klasse_fach)
-    try:
-        lesson = _resolve_lesson_from_class_subject(
-            c, sy, klasse, fach, ref_date=day)
-    except RuntimeError as e:
-        print(str(e), file=sys.stderr)
-        return None
+    lesson = _resolve_lesson_from_class_subject(
+        c, sy, klasse, fach, ref_date=day)
     entry = lesson.get("entry")
     if not entry or not entry.get("periodIds"):
-        print("kein Termin-Entry mit Perioden-IDs auflösbar — "
-              "--termin-id verwenden", file=sys.stderr)
-        return None
+        raise NotFoundError(
+            "kein Termin-Entry mit Perioden-IDs auflösbar — "
+            "--termin-id verwenden")
     if entry.get("date") != day:
         print(f"Hinweis: kein Termin am {day}, verwende "
               f"{entry.get('date')} ({entry.get('start')})", file=sys.stderr)
@@ -1115,12 +1108,7 @@ def cmd_absenzen_eintragen(args: argparse.Namespace) -> int:
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
     schueler = _resolve_schueler(c, args)
-    if schueler is None:
-        return 2
-    resolved = _termin_und_block(c, args, sy)
-    if resolved is None:
-        return 2
-    ttid, block = resolved
+    ttid, block = _termin_und_block(c, args, sy)
     summary = {"student": schueler, "periodId": ttid, "block": block}
     if args.testlauf:
         print(json.dumps(summary, indent=2, ensure_ascii=False))
@@ -1151,15 +1139,10 @@ def cmd_absenzen_entfernen(args: argparse.Namespace) -> int:
     """
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
-    resolved = _termin_und_block(c, args, sy)
-    if resolved is None:
-        return 2
-    ttid, _block = resolved
+    ttid, _block = _termin_und_block(c, args, sy)
     schueler = None
     if args.absenz_id is None:
         schueler = _resolve_schueler(c, args)
-        if schueler is None:
-            return 2
     vm = c.get_classreg_viewmodel(ttid)["viewModel"]
     rows = vm.get("absenceRows") or []
     row = None
@@ -1168,20 +1151,18 @@ def cmd_absenzen_entfernen(args: argparse.Namespace) -> int:
                     if (r.get("absence") or {}).get("id")
                     == args.absenz_id), None)
         if row is None:
-            print(f"Absenz-ID {args.absenz_id} nicht gefunden am Termin "
-                  f"{ttid} (`absenzen zeigen --termin-id {ttid}` prüfen)",
-                  file=sys.stderr)
-            return 2
+            raise NotFoundError(
+                f"Absenz-ID {args.absenz_id} nicht gefunden am Termin "
+                f"{ttid} (`absenzen zeigen --termin-id {ttid}` prüfen)")
     else:
         assert schueler is not None
         row = next((r for r in rows
                     if ((r.get("absence") or {}).get("person") or {})
                     .get("id") == schueler["id"]), None)
         if row is None:
-            print(f"Keine Abwesenheit für {schueler['name']} "
-                  f"(id={schueler['id']}) am Termin {ttid} gefunden.",
-                  file=sys.stderr)
-            return 2
+            raise NotFoundError(
+                f"Keine Abwesenheit für {schueler['name']} "
+                f"(id={schueler['id']}) am Termin {ttid} gefunden.")
     ab = row.get("absence") or {}
     summary = {"absenceId": ab.get("id"),
                "student": ((ab.get("person") or {}).get("displayName")),
@@ -1208,6 +1189,7 @@ def cmd_absenzen_pruefen(args: argparse.Namespace) -> int:
     Mit --termin-id: genau dieser Termin. Ohne: alle ungeprüften Termine
     dieser Lesson im Zeitraum (--von/--bis, Standard: Schuljahresstart bis
     heute). Zwischen den Calls --pause Sekunden (IP-Rate-Limit).
+    --testlauf (Standard) zeigt nur; mit --ausfuehren wird geprüft.
     """
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
@@ -1223,8 +1205,7 @@ def cmd_absenzen_pruefen(args: argparse.Namespace) -> int:
             syr = next((y for y in c.get_schoolyears()
                         if int(y["id"]) == sy), None)
             if syr is None:
-                print(f"Schuljahr {sy} nicht gefunden", file=sys.stderr)
-                return 2
+                raise NotFoundError(f"Schuljahr {sy} nicht gefunden")
             von = str(syr["dateRange"]["start"])[:10]
         raw = c.get_open_periods(von, bis, school_year_id=sy).get("periods",
                                                                   [])
@@ -1234,9 +1215,15 @@ def cmd_absenzen_pruefen(args: argparse.Namespace) -> int:
                 and p.get("period", {}).get("id") is not None]
         print(f"{len(pids)} ungeprüfte Termine der Lesson im Zeitraum "
               f"{von}..{bis}", file=sys.stderr)
-        if not pids:
-            print("[]")
-            return 0
+    if not pids:
+        print("[]")
+        return 0
+    if args.testlauf:
+        print(json.dumps([{"periodId": p} for p in pids], indent=2,
+                         ensure_ascii=False))
+        print(f"\nTESTLAUF: {len(pids)} Termin(e) würden geprüft (kein "
+              "Write); mit --ausfuehren ausführen.", file=sys.stderr)
+        return 0
     for i, pid in enumerate(pids):
         _sleep_between(i, args.pause)
         entry: dict = {"periodId": pid}

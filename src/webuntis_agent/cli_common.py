@@ -8,12 +8,52 @@ import sys
 import time
 from datetime import date
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
+
+from webuntis_agent.errors import (
+    NotFoundError,
+    ServerError,
+    UsageError,
+)
 
 if TYPE_CHECKING:
     from webuntis_agent.client import Client
 
 from dataclasses import dataclass
+
+
+def _print_help_and_error(parser: argparse.ArgumentParser,
+                          message: str) -> None:
+    """Print a parser's full help, then the error line, both to stderr.
+
+    Help first, error last — the same order for every usage error, so
+    the output is predictable (and matches what `-h` shows plus a
+    trailing explanation).
+    """
+    parser.print_help(sys.stderr)
+    print(f"\n{parser.prog}: Fehler: {message}\n", file=sys.stderr)
+
+
+class _HelpfulParser(argparse.ArgumentParser):
+    """ArgumentParser that reports usage errors as a full help screen.
+
+    `add_subparsers` defaults `parser_class=type(self)`, so every
+    nested subparser inherits this behavior automatically.
+    """
+
+    def error(self, message: str):  # type: ignore[override]
+        raise UsageError(message, parser=self)
+
+
+def usage_error(args: argparse.Namespace, message: str) -> NoReturn:
+    """Raise a usage error, attaching the owning subparser for help.
+
+    `main()` renders the subcommand help + the error line. When no
+    parser is attached (e.g. in unit tests) the message still reaches
+    stderr via `main()`.
+    """
+    parser = getattr(args, "_parser", None)
+    raise UsageError(message, parser=parser)
 
 
 @dataclass(frozen=True)
@@ -171,10 +211,13 @@ def _find_klasse(c: Client, sy: int, needle: int | str) -> dict:
     """Klassen-Dict (getKlassen) per ID oder exaktem Name suchen.
 
     Einzige Quelle für classId (für timetable/entries mit
-    resourceType=CLASS). Wirft RuntimeError, wenn nicht gefunden.
+    resourceType=CLASS). Bei einem Namens-Fehltreffer werden per
+    tokenisierender Suche Kandidaten ermittelt ("meinst du ...?").
+    Wirft NotFoundError, wenn nicht gefunden.
     """
     res = c.get_klassen(schoolyear_id=sy)
     klassen = res.get("result", []) if isinstance(res, dict) else res
+    original = needle
     if isinstance(needle, str) and needle.isdigit():
         needle = int(needle)
     for k in klassen:
@@ -183,7 +226,27 @@ def _find_klasse(c: Client, sy: int, needle: int | str) -> dict:
         if (isinstance(needle, str)
                 and k.get("name", "").lower() == needle.lower()):
             return k
-    raise RuntimeError(f"Klasse '{needle}' nicht gefunden")
+    hint = ""
+    if isinstance(original, str) and not original.isdigit():
+        for cand in _klasse_kandidaten(c, sy, original):
+            hint += f"\n  - {cand}"
+    if hint:
+        hint = "\nMeinst du eine dieser Klassen?" + hint
+    raise NotFoundError(f"Klasse '{original}' nicht gefunden{hint}")
+
+
+def _klasse_kandidaten(c: Client, sy: int, query: str) -> list[str]:
+    """Klassen-Kurznamen, die per Suche am besten zu `query` passen."""
+    try:
+        hits = c.search_timetable_tokens(query, school_year_id=sy)
+    except Exception:
+        return []
+    names = {
+        (h.get("resource", {}).get("shortName")
+         or h.get("resource", {}).get("longName") or "")
+        for h in hits if h.get("type") == "CLASS"
+    }
+    return sorted(n for n in names if n)
 
 
 def _add_school_year_arg(sp):
@@ -397,14 +460,14 @@ def _default_von_bis(c: Client, sy: int) -> tuple[str, str]:
 
     Quelle: open-periods/meta (schoolYear.start/end); Ende auf heute
     gedeckelt — Zukunft ist nie offen (s. /open-periods-Mitschnitt).
-    Wirft RuntimeError ohne Meta-Range.
+    Wirft ServerError ohne Meta-Range.
     """
     meta = c.get_open_periods_meta(school_year_id=sy)
     yr = meta.get("schoolYear") or {}
     start, end = yr.get("start"), yr.get("end")
     if not start or not end:
-        raise RuntimeError("open-periods/meta ohne schoolYear-Range — "
-                           "--von/--bis explizit angeben")
+        raise ServerError("open-periods/meta ohne schoolYear-Range — "
+                          "--von/--bis explizit angeben")
     return start, min(date.today().isoformat(), end)
 
 
@@ -420,9 +483,8 @@ def _resolve_von_bis(args: argparse.Namespace, c: Client,
     if start and end:
         return start, end
     if bool(start) != bool(end):
-        print("nötig: --von und --bis gemeinsam "
-              "(oder keins: Schuljahr-Default)", file=sys.stderr)
-        raise SystemExit(2)
+        usage_error(args, "nötig: --von und --bis gemeinsam "
+                          "(oder keins: Schuljahr-Default)")
     start, end = _default_von_bis(c, sy)
     print(f"Zeitraum-Default: Schuljahr {start}..{end}", file=sys.stderr)
     return start, end
@@ -448,13 +510,12 @@ def _read_text_arg(args: argparse.Namespace) -> str:
         sources.append(("--text-stdin", True))
     present = [(n, v) for n, v in sources if v]
     if not present:
-        raise SystemExit("Fehler: genau eine Quelle nötig: "
-                         "--text / --text-datei / --text-stdin")
+        usage_error(args, "genau eine Quelle nötig: "
+                          "--text / --text-datei / --text-stdin")
     if len(present) > 1:
-        raise SystemExit(
-            "Fehler: nur eine Quelle erlaubt "
-            f"(angegeben: {[n for n, _ in present]})"
-        )
+        usage_error(args,
+                    "nur eine Quelle erlaubt "
+                    f"(angegeben: {[n for n, _ in present]})")
     name, _ = present[0]
     if name == "--text":
         return args.text

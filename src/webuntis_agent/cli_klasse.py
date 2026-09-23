@@ -18,6 +18,7 @@ from webuntis_agent.cli_common import (
     _open_period_entries,
 )
 from webuntis_agent.cli_lesson import _teacher_names_for_class
+from webuntis_agent.errors import NotFoundError, ServerError
 
 if TYPE_CHECKING:
     from webuntis_agent.client import Client
@@ -44,11 +45,7 @@ def cmd_klasse_kv(args: argparse.Namespace) -> int:
     """Klassenvorstand einer Klasse anzeigen (Name oder ID)."""
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
-    try:
-        info = _kv_info(c, sy, args.klassenname)
-    except RuntimeError as e:
-        print(str(e), file=sys.stderr)
-        return 2
+    info = _kv_info(c, sy, args.klassenname)
     if args.json:
         print(json.dumps(info, indent=2, ensure_ascii=False))
         return 0
@@ -172,12 +169,8 @@ def cmd_klasse_faecher(args: argparse.Namespace) -> int:
     """Lessons (Fächer) einer Klasse auflisten — aus dem Stundenplan."""
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
-    try:
-        groups, start, end = _faecher_groups(
-            c, sy, args.klassenname, args.start, args.end, args.fach)
-    except RuntimeError as e:
-        print(str(e), file=sys.stderr)
-        return 2
+    groups, start, end = _faecher_groups(
+        c, sy, args.klassenname, args.start, args.end, args.fach)
     if not groups:
         print(f"(keine Lessons für {args.klassenname}"
               + (f"/{args.fach}" if args.fach else "")
@@ -230,7 +223,7 @@ def _klassen_roster(c: Client, klassenname: str) -> list[tuple[str, str]]:
     try:
         overview = c.get_students_overview()
     except Exception as e:
-        raise RuntimeError(f"students/overview fehlgeschlagen ({e})")
+        raise ServerError(f"students/overview fehlgeschlagen ({e})") from e
     kl_l = klassenname.lower()
     rows = []
     for s in overview.get("students", []):
@@ -242,7 +235,7 @@ def _klassen_roster(c: Client, klassenname: str) -> list[tuple[str, str]]:
                       s.get("firstName", "").lower()),
                      name, ci.get("name", "")))
     if not rows:
-        raise RuntimeError(
+        raise NotFoundError(
             f"keine Schüler für Klasse '{klassenname}' im aktuellen Roster")
     rows.sort(key=lambda r: r[0])
     return [(name, klass) for _, name, klass in rows]
@@ -252,11 +245,7 @@ def cmd_klasse_roster(args: argparse.Namespace) -> int:
     """Schülerliste (Roster) einer Klasse, Excel-einfügbare TSV-Ausgabe."""
     from webuntis_agent.cli_lesson import _tsv_cell
     c = _make_client(args)
-    try:
-        rows = _klassen_roster(c, args.klassenname)
-    except RuntimeError as e:
-        print(str(e), file=sys.stderr)
-        return 2
+    rows = _klassen_roster(c, args.klassenname)
     if args.json:
         print(json.dumps({
             "class": args.klassenname,
@@ -277,17 +266,9 @@ def cmd_klasse(args: argparse.Namespace) -> int:
     """
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
-    try:
-        info = _kv_info(c, sy, args.klassenname)
-    except RuntimeError as e:
-        print(str(e), file=sys.stderr)
-        return 2
-    try:
-        groups, start, end = _faecher_groups(c, sy, args.klassenname,
-                                             args.start, args.end, None)
-    except RuntimeError as e:
-        print(str(e), file=sys.stderr)
-        return 2
+    info = _kv_info(c, sy, args.klassenname)
+    groups, start, end = _faecher_groups(c, sy, args.klassenname,
+                                         args.start, args.end, None)
     try:
         rows = _klassen_roster(c, args.klassenname)
     except RuntimeError as e:

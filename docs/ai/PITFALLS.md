@@ -5,7 +5,7 @@ Read this file carefully before making changes in affected areas.
 
 ## API / WebUntis
 
-- **TCP reset after many API calls**: WebUntis rate-limits by IP on TCP level (not HTTP 429). After ~50 rapid calls, new connections get reset. Solution: `--delay 1.0` between PUTs, retry-with-backoff in client. Blockade clears after ~30-60 seconds.
+- **TCP reset after many API calls**: WebUntis rate-limits by IP on TCP level (not HTTP 429). After ~50 rapid calls, new connections get reset. Solution: `--pause 1.0` between PUTs, retry-with-backoff in client. Blockade clears after ~30-60 seconds.
 - **Login response is 302 in BOTH cases**: `j_spring_security_check`
   redirects to `/WebUntis/` on success AND on failure (a failed login
   still sets a fresh, anonymous JSESSIONID). The 302 is NOT a success
@@ -90,8 +90,8 @@ Read this file carefully before making changes in affected areas.
 - **Timetable search matches no multi-word phrases**: `q="<Vorname Nachname>"`
   returns [], while the single tokens hit (teacher Kürzel, student
   `<Nachname><Vorname[:3]>`). Always tokenize (see `search_timetable_tokens()`,
-   CLI `search --wortteile`, `student`) instead of trusting the
-  exact phrase.
+   CLI `student --wortteile` / `lehrer --wortteile`) instead of trusting
+  the exact phrase.
 - **Student displayNames are anonymized** (last name only); the first
   name survives only in `shortName` (`<lastname><firstname[:3]>`) and in
   `students/overview` (`firstName`/`lastName`).
@@ -120,14 +120,14 @@ Read this file carefully before making changes in affected areas.
   verifiziert 2026-09-21)! `Client` therefore maps
   exactly that signature to `UnknownLessonError` (lsId + schoolyear in
   the message, findings hint included); `cli.main()` catches it
-  centrally (stderr + exit 2, no traceback) for all matrix consumers
-  (`lesson matrix/aufnehmen/anpassen/roster`, `lesson info`). Other RuntimeErrors
-  pass through unwrapped — do NOT broaden the match.
+  centrally (stderr + exit 3 (NotFound), no traceback) for all matrix
+  consumers (`lesson matrix/aufnehmen/anpassen/roster`, `lesson info`).
+  Other RuntimeErrors pass through unwrapped — do NOT broaden the match.
 - **Fremde Lehrer-Stundenpläne sind nicht lesbar**: Public-Endpoint
   mit elementType=2/Lehrer-ID → 403 (`no right for anonymous user`);
   JSON-RPC `getTimetable` (Typ 2) → Code -8520 (`not authenticated`).
-  Teacher-Dispatch (`search --detail`) zeigt daher Steckbrief +
-  KV-Klassen (aus `getKlassen` teacher1/2/3-Match), keinen Wochenplan.
+  Der `lehrer`-Befehl zeigt daher Steckbrief + KV-Klassen (aus
+  `getKlassen` teacher1/2/3-Match), keinen Wochenplan.
 - **Student lists are admin-only**: `getStudents` (JSON-RPC) returns 0 and
   `/api/rest/view/v1/students` returns 500 for teacher accounts. Use
   `lessonstudentlist.do?lsid=X` (lesson participant page) to obtain

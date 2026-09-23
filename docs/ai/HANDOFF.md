@@ -1,26 +1,29 @@
 Open tasks:
 
-None.
+- Live-Verifikation der neuen Fehlerklassen (Netz 5 / Auth 4 / Server 6)
+  an echten Endpunkten — bisher nur Unit-Tests mit Fake-Clients
+  (siehe #23).
+- Code-Review ab dem Fixpunkt dieses Commits (`git log`).
 
-Erledigt (Session 2026-09-21, committed):
-- Man-Page `man/wu.1` + Drift-Test + AGENTS.md/README-Verweis (#20).
-- `/open-periods`-Re-Record (20260921-231543) ausgewertet: UI-Route ruft
-  exakt POST classreg/open-periods (OnLoad heute..heute, Schuljahr-Wahl
-  Start..heute); neu: GET open-periods/meta. `--von/--bis` bei allen
-  `offen`-Befehlen optional, Default Schuljahr-Start..heute (#21).
-  Suite 83/83 grün.
+Erledigt (Session 2026-09-23, #23, Commit s. `git log`):
+- Exit-Code-Taxonomie (`errors.py`, 0–9, `classify_exit`, Client-
+  Übersetzung, `cli.main()` als einziger Exit-Punkt).
+- Nutzungsfehler zeigen die volle Unterbefehl-Hilfe (`_HelpfulParser`,
+  `usage_error`, `_attach_parsers`); `wu` ohne Argumente → Top-Hilfe,
+  Exit 1.
+- `search` entfernt → `lehrer`; `student`/`klasse` mit eingebetteter
+  Suche (Kandidatenvorschlag).
+- ALLE Writes testlauf-Standard (`--testlauf`/`--ausfuehren`); Ausnahme
+  dokumentiert: `intern rpc`/`intern rest`.
+- `AGENTS.md`: Git-Reglementierung entfernt (Agenten entscheiden selbst).
+- `man wu` nutzerlokal (`~/.local/share/man/man1/wu.1`), README-Anleitung.
+- Tests 112/112; `groff -man -Tutf8 man/wu.1` warnungsfrei.
 
-Review-Basis für den nächsten Lauf:
-- Domain-CLI-Serie committed als 7f69335 (#17), davor 72c9bc2 (#16).
-- Stundenplan-Serie committed als 9d5c30a (#18), inkl. Live-Write-Paar
-  (Absenz setzen+löschen am WMC-Termin 2026-09-25, beide Wege — insert
-  + entfernen via Schüler-Lookup — verifiziert, netto null).
-  Review ab `git diff 7f69335...9d5c30a`.
-- Man-Page + offen-Default als (#20, #21) committed (Hash s.
-  `git log`).
-- Follow-up als Issue angelegt: #22 `raum suchen` (Freie-Raum-Suche:
-  ROOM-entries je Slot + capacity-Filter aus rooms/form;
-  `availability`-Semantik klären — beide aufgenommenen Slots lieferten
-  durchgehend NONE).
+Vorherige Serien (committed): Man-Page + `offen`-Default (#20/#21),
+Domain-CLI (#17), Stundenplan-Serie (#18).
 
-Last updated: 2026-09-21
+Offen für später:
+- #22 `raum suchen` echte Freie-Raum-Suche (ROOM-Belegung je Slot,
+  capacity-Filter; `availability`-Semantik ungeklärt).
+
+Last updated: 2026-09-23
