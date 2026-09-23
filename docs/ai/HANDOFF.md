@@ -19,6 +19,11 @@ Erledigt (Session 2026-09-23, #23, Commit s. `git log`):
 - `man wu` nutzerlokal (`~/.local/share/man/man1/wu.1`), README-Anleitung.
 - Tests 112/112; `groff -man -Tutf8 man/wu.1` warnungsfrei.
 
+Nachtrag (#24):
+- Pre-Push-Hook `scripts/pre-push` (pytest vor jedem Push, blockt rote
+  Pushes). Installiert per Symlink `.git/hooks/pre-push` (nicht
+  versioniert); README-Abschnitt „Tests vor jedem Push (Git-Hook)".
+
 Vorherige Serien (committed): Man-Page + `offen`-Default (#20/#21),
 Domain-CLI (#17), Stundenplan-Serie (#18).
 

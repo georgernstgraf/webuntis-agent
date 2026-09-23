@@ -39,6 +39,8 @@ Fake-Clients, kein Netz).
 - None.
 
 ## Notes
+- Pre-Push-Hook `scripts/pre-push` läuft `pytest tests/` und blockt rote
+  Pushes; pro Clone per Symlink nach `.git/hooks/pre-push` (README).
 - `WuError` erbt von `RuntimeError`: Soft-Fail-Handler
   (`except RuntimeError: print(...)`) bleiben nutzbar.
 - `raum suchen/groesse` sind Stubs mit Exit 7 (vorher 3).

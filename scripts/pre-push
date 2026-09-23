@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Git pre-push hook: run the pytest suite and block the push on failure.
+#
+# Install once per clone (from the repo root):
+#   ln -sf ../../scripts/pre-push .git/hooks/pre-push
+#
+# The hook is a tracked file; .git/hooks/ is not, hence the symlink.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+# Prefer the repo venv, fall back to python3.
+PY="$ROOT/.venv/bin/python"
+[ -x "$PY" ] || PY=python3
+
+if ! "$PY" -c "import pytest" >/dev/null 2>&1; then
+    echo "pre-push: pytest nicht verfuegbar ($PY) — Testlauf uebersprungen." >&2
+    exit 0
+fi
+
+echo "pre-push: pytest tests/ ..." >&2
+if ! "$PY" -m pytest tests/ -q; then
+    echo "" >&2
+    echo "pre-push: Tests fehlgeschlagen — Push abgebrochen." >&2
+    echo "pre-push: (bewusst umgehen: git push --no-verify)" >&2
+    exit 1
+fi
+echo "pre-push: Tests gruen." >&2

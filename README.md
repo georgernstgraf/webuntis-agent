@@ -106,6 +106,20 @@ man wu
 export MANPATH="$HOME/.local/share/man:$MANPATH"   # z. B. in ~/.bashrc
 ```
 
+### Tests vor jedem Push (Git-Hook)
+
+`scripts/pre-push` lässt vor jedem `git push` die pytest-Suite laufen und
+bricht den Push bei roten Tests ab. Einmalig pro Clone verlinken (das
+Hook-Verzeichnis ist nicht versioniert, das Skript schon):
+
+```bash
+ln -sf ../../scripts/pre-push .git/hooks/pre-push
+```
+
+Der Hook nutzt bevorzugt `.venv/bin/python`, sonst `python3`; fehlt
+pytest, wird der Push nicht blockiert (nur ein Hinweis). Bewusst
+umgehen: `git push --no-verify`.
+
 ### Offene Perioden (Arbeitsvorrat: Lehrstoff oder Absenzen fehlen)
 
 ```bash
@@ -355,6 +369,7 @@ webuntis-agent/
 │   └── cli_intern.py     # intern: Session, Recorder, rpc/rest (versteckt)
 ├── scripts/
 │   ├── brave-debug.sh     # start Brave with --remote-debugging-port=9222
+│   ├── pre-push           # git hook: pytest vor jedem Push
 │   └── show-cookies.py    # inspect harvested cookies
 ├── tests/                 # pytest-Suite (Fake-Clients, keine Netz-Calls)
 ├── docs/

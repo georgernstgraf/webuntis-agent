@@ -52,7 +52,7 @@ Follow these without question. Do not deviate unless explicitly told.
 - `src/webuntis_agent/` — Python-Paket: recorder, client, gitlog,
   errors, cli (Verdrahtung) + cli_common (Infra), cli_klasse,
   cli_lesson, cli_student, cli_lehrer, cli_offen, cli_raum, cli_intern
-- `scripts/` — shell scripts (brave-debug.sh) and helper scripts (show-cookies.py)
+- `scripts/` — shell scripts (brave-debug.sh, pre-push) and helper scripts (show-cookies.py)
 - `recordings/` — gitignored, contains session cookies and captured traffic
 - `docs/WEBUNTIS_API.md` — authoritative API reference
 - `docs/ai/` — knowledge persistence files
@@ -110,6 +110,10 @@ Follow these without question. Do not deviate unless explicitly told.
 ## Testing
 - `pytest tests/test_gitlog.py` — 8 tests covering split classes, February name change, ±10/±30 window, known examples
 - Tests use real git repos (not mocked) — run from the repo with GRG-* repos present
+- Pre-Push-Hook `scripts/pre-push` läuft `pytest tests/` und blockiert rote
+  Pushes (Exit 1); Installation pro Clone per Symlink nach
+  `.git/hooks/pre-push` (README); Bypass `git push --no-verify`; fehlt
+  pytest, wird nicht blockiert (Hinweis)
 
 ## Privacy
 - This repo is PUBLIC. No person data in any tracked file: no student or
