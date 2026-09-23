@@ -5,6 +5,15 @@ Reverse-engineering the WebUntis web API (as used by the WebUntis UI at
 (lesson topic entry) action that the teacher otherwise performs manually
 in the browser.
 
+## CLI manual
+
+The authoritative operator reference for the `./wu` CLI is `man/wu.1`
+(groff man page, German) — read it with `man --local-file man/wu.1`
+instead of assembling invocations from source code. It covers every
+command, option, workflow, exit code, and pitfall — more than `--help`.
+`tests/test_manpage.py` guards it against CLI drift; update both when
+adding commands or flags.
+
 ## Context
 
 This is a companion tool to the GRG-* teaching repositories under

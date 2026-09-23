@@ -1,0 +1,759 @@
+.TH WU 1 "September 2026" "webuntis-agent" "Benutzerhandbuch"
+.SH NAME
+wu \- Klassenbuch-Arbeit in WebUntis vom Terminal aus (Roster, Lehrstoff, Absenzen)
+.SH UEBERSICHT
+.B wu
+.RI [ OPTIONEN ]
+.B klasse
+.I KLASSENNAME
+.RI [ UNTERBEFEHL ]
+.br
+.B wu
+.B lesson
+.I KLASSE/FACH
+.RI [ UNTERBEFEHL ]
+.br
+.B wu
+.B lesson
+.B \-\-lsid
+.I LESSON_ID
+.RI [ UNTERBEFEHL ]
+.br
+.B wu
+.B student
+.RI [ OPTIONEN ]
+.I NAME
+.br
+.B wu
+.B offen
+.I UNTERBEFEHL
+.RI [ "\-\-von " START " \-\-bis " ENDE ]
+.br
+.B wu
+.B search
+.RI [ OPTIONEN ]
+.I ANFRAGE
+.br
+.B wu
+.B raum
+.I UNTERBEFEHL ...
+.br
+.B wu
+.B intern
+.I UNTERBEFEHL ...
+.SH BESCHREIBUNG
+.B wu
+ist die Kommandozeile des
+.B webuntis-agent
+: ein Werkzeug, das die (undokumentierten) WebUntis-Endpunkte der
+Klassenbuch-Weboberflaeche per HTTP nachspielt und damit
+Klassenbuch-Routineaufgaben automatisiert \(em Teilnehmerlisten,
+Lehrstoff-Eintraege und Absenzenpruefung bzw. Abwesenheiten.
+Die Lehrstoff-Texte lassen sich aus der Git-Historie der
+Unterrichts-Repositories (GRG-*) ableiten.
+.PP
+Alle Ausgaben sind deutsch. Mit
+.B \-\-json
+liefert jeder Befehl maschinenlesbare Strukturen (Schluessel englisch);
+ohne
+.B \-\-json
+sind Export-Befehle einfuegesicher (TSV/ reiner Text auf stdout).
+Diagnostik, Warnungen und Hinweise gehen grundsaetzlich nach stderr,
+sodass stdout weiterverarbeitbar bleibt.
+.PP
+Der Aufruf erfolgt ueber das Repo-Skript
+.B ./wu
+(direkt oder per Symlink aus einem anderen Verzeichnis):
+es setzt
+.B PYTHONPATH=src
+und waehlt bevorzugt das Repo-venv
+.RI ( .venv/bin/python );
+faellt das weg, wird
+.B python3
+verwendet und bei fehlenden Modulen eine deutsche Setup-Anleitung
+ausgegeben. Siehe
+.B UMGEBUNG
+und
+.B DATEIEN
+.
+.SS Domain-Objekte und Adressierung
+.TP
+.B Klasse
+Adressiert per exaktem (Gross-/Kleinschreibung egal) Klassennamen,
+z.B.
+.BR 5XZY .
+Der Befehl
+.B klasse
+liefert Uebersicht (Klassenvorstand, Faecher, Roster).
+.TP
+.B Lesson
+Ein Fach innerhalb einer Klasse (1\(en2 Semester), adressiert als genau
+ein Positionsargument
+.IR KLASSE/FACH ,
+z.B.
+.BR 5XZY/SWP1x .
+Der Schraegstrich-Token wird vor dem Parsen herausgezogen, daher steht
+die Adresse immer direkt hinter
+.BR lesson :
+.B "wu lesson 5XZY/SWP1x roster"
+statt
+.BR "wu lesson roster 5XZY/SWP1x" .
+Als direkter Ausweg (z.B. fuer Termine ausserhalb der Plan-Woche oder
+Ferien) dient
+.BR "\-\-lsid " LESSON_ID .
+.TP
+.B Student
+Adressiert per Name (tokenisierend) oder direkt per
+.BR "\-\-id " STUDENT_ID .
+.TP
+.B Termin
+Einzelne Unterrichtsstunde einer Lesson, adressiert per
+.BR "\-\-termin-id " PERIOD_ID
+(periodId) oder per Datum
+.BR "\-\-datum " DATUM
+(JJJJ-MM-TT oder
+.BR heute ).
+.TP
+.B Eigene Lessons
+Lessons des eingeloggten Lehrers. Da der eigene Stundenplan die eigene
+Lehrerposition anonymisiert, erkennt
+.B wu
+eigene Lessons per Slot-Match (Fach, Datum, Startzeit), nicht per
+Lehrerkuerzel.
+.SS Schuljahr
+Die Schuljahr-ID wird automatisch ueber den Datumsbereich aufgeloest
+(IDs sind nicht ableitbar und aendern sich jaehrlich); mit
+.B \-\-schuljahr-id
+laesst sie sich festlegen \(em vor
+.B und
+hinter dem Unterbefehl (bei doppelter Angabe gewinnt der Unterbefehl).
+.SS Lesen vs. Schreiben
+Rein lesende Befehle schreiben nie. Alle Writes tragen
+.B \-\-testlauf
+(Standard: nur zeigen/protokollieren, kein Write) und
+.B \-\-ausfuehren
+(wirklich schreiben). Betroffen:
+.BR "lesson aufnehmen" ,
+.BR "lesson anpassen" ,
+.BR "lesson lehrstoff eintragen" ,
+.BR "lesson lehrstoff aus-git" ,
+.BR "lesson absenzen eintragen" ,
+.BR "lesson absenzen entfernen" ,
+.BR "offen festtexte"
+sowie
+.BR "offen eintragen"
+und
+.BR "offen pruefen"
+(letztere zwei ohne Testlauf-Schalter, dafuer mit
+.BR \-\-pause -Drosselung;
+.B offen vorschlag
+ist immer lesend).
+.SH BEFEHLE
+.SS klasse \- alles zu einer Klasse
+.BI "wu klasse " KLASSENNAME
+.RI [ roster " | " faecher " | " kv ]
+.RI [ OPTIONEN ]
+.PP
+Ohne Unterbefehl: Klassen-Uebersicht mit Klassenvorstand (KV aus den
+Lehrer-Positionen teacher1/2/3), allen Lessons der Klasse aus dem
+Stundenplan und Roster.
+.TP
+.B roster
+Schuelerliste des aktuellen Rosters (volle Namen, sortiert) als TSV
+(Name<TAB>Klasse), direkt in Tabellenkalkulation einfuegbar.
+.B \-\-ohne-kopf
+laesst die Kopfzeile weg.
+.TP
+.B faecher
+Alle Lessons der Klasse aus dem Klassen-Stundenplan (nicht nur offene),
+gruppiert je Lesson mit Lehrern, Raeumen und Wochenterminen; die Woche
+um heute genuegt (Lessons laufen uebers Semester), mit
+.B \-\-von\fR/\fB\-\-bis
+werden die Wochen des Bereichs iteriert. Markierung
+.B eigen
+fuer eigene Lessons (Slot-Match, siehe oben);
+.B offen
+zaehlt offene Perioden im Zeitraum (nur eigene zaehlbar).
+.B \-\-fach
+filtert per Fach-Praefix (z.B. SWP),
+.B \-\-volle-namen
+loest Lehrerkuerzel zu Vollnamen auf.
+.TP
+.B kv
+Klassenvorstand der Klasse anzeigen.
+.SS lesson \- alles zu einer Lesson
+.BI "wu lesson " KLASSE/FACH
+.RI [ roster " | " matrix " | " termine " | " info " | " aufnehmen " | " anpassen " | " lehrstoff " | " absenzen ]
+.RI [ OPTIONEN ]
+.PP
+Ohne Unterbefehl: Roster (Teilnehmerliste) des Termins zu
+.B \-\-datum
+(Standard: naechster Termin). Gibt es am Wunsch-Tag keinen Termin, wird
+mit Hinweis der naechste kommende (sonst der letzte gehaltene) Termin
+verwendet.
+.PP
+Bei mehrdeutiger Aufloesung (parallele Gruppen desselben Fachs, z.B.
+Gruppenwahl) waehlt der Resolver die eigene Lesson bevorzugt bzw. die
+lsId naechst am Referenzdatum; jede Kandidatin wird als
+.IR Klasse/Fach " (" Datum ")"
+Zeile nach stderr gemeldet.
+.TP
+.B roster
+Teilnehmerliste des Termins als TSV (Name<TAB>Klasse). Teilnehmer sind
+Schueler, deren Anwesenheits-Matrix das Termindatum enthaelt \(em
+dieselbe Menge, die Untis bei der Anwesenheitskontrolle zeigt.
+.TP
+.B matrix
+Anwesenheits-Matrix der Lesson: je Schueler alle besuchten Termine.
+Textansicht zeigt nur Anwesende
+.RB ( \-\-alle
+fuer alle,
+.B \-\-nur-anwesende
+explizit,
+.B \-\-klassen-id
+filtert per Klassen-ID);
+.B \-\-json
+liefert immer alles.
+.TP
+.B termine
+Alle Termine der Lesson mit Offen-Status (Lehrstoff fehlt oder Absenzen
+ungeprueft) vs. erledigt.
+.B \-\-mit-lehrstoff
+laedt zusaetzlich die eingetragenen Texte (je Termin ein Call,
+.B \-\-pause
+gedrosselt, Standard 1.0 s).
+.TP
+.B info
+Lesson-Diagnostik: Lehrer, Klassen, mainStudentgroupId sowie
+Roster- vs. Anwesenheits-Verteilung je Klasse.
+.TP
+.B aufnehmen
+Schueler in die Anwesenheit der Lesson aufnehmen: setzt seine Termine
+auf alle Lesson-Termine und schickt die kombinierte Payload (Schueler
+der Lesson-Heimatklasse unveraendert + aufgenommener Schueler).
+Braucht
+.BR \-\-klassen-id
+(Heimatklasse der Lesson) plus
+.B \-\-schueler-id
+oder
+.B \-\-schueler-name
+(Name braucht genau einen Treffer).
+.B \-\-ausgabe
+schreibt die Submit-Payload als JSON in eine Datei,
+.B \-\-details
+zeigt sie in der Testlauf-Ausgabe.
+.TP
+.B anpassen
+Aufnehmen und/oder Entfernen in einem Write (volle Edit-Semantik:
+bereits anwesende Schueler jeder Klasse bleiben \(em sie zu streichen
+wuede sie abmelden; Entfernte verlieren alle Termine; Aufgenommene
+erhalten alle Lesson-Termine).
+.B \-\-aufnehmen-id
+und
+.B \-\-entfernen-id
+sind wiederholbar und muessen disjunkt sein.
+.TP
+.B lehrstoff zeigen
+Eingetragenen Lehrstoff eines Termins anzeigen (braucht
+.BR \-\-termin-id ).
+.TP
+.B lehrstoff eintragen
+Einzelner Lehrstoff-Write fuer
+.BR \-\-termin-id .
+Textquelle:
+.B \-\-text
+(ACHTUNG: die Shell verstuemmelt Umlaute beim Uebergeben \(em aus
+\(dqU mit Umlaut\(dq wird
+.BR \(dqUe \(dq),
+daher
+.B \-\-text-datei
+oder
+.B \-\-text-stdin
+verwenden.
+.B \-\-thema-id
+ist die Lehrstoff-Zeilen-ID (Standard: automatisch aufgeloest;
+.B 0
+legt neu an). Ein PUT aktualisiert den ganzen Stundenblock (gleiche
+lsId) auf einmal \(em keine separaten PUTs fuer Blockpartner.
+.TP
+.B lehrstoff aus-git
+Lehrstoff-Text aus den GRG-*-Unterrichts-Repos ableiten: Commits und
+Diffs zu Klasse+Datum zeigen (Fenster \(+-10 Tage, \(+-30 Fallback;
+Februar-Namenswechsel und
+.B _X\fR/\fB_Y
+-Split-Ordner werden einbezogen).
+.B \-\-testlauf
+(Standard) zeigt nur; mit
+.B \-\-ausfuehren
+wird direkt eingetragen (braucht zusaetzlich
+.B \-\-termin-id\fR/\fB\-\-thema-id\fR).
+.TP
+.B absenzen zeigen
+Ohne
+.B \-\-termin-id\fR:
+Uebersicht je Schueler aus der Matrix (fehlende vs. gehaltene Stunden,
+nur bis heute;
+.B \-\-nur-fehlende
+filtert,
+.B \-\-alle
+zeigt auch nie Anwesende). Mit
+.B \-\-termin-id\fR:
+echte Abwesenheits-Eintraege dieses Termins aus dem Klassenbuch
+inklusive Absenz-IDs (Eingabe fuer
+.BR entfernen ).
+Hinweis: Eine eingetragene Abwesenheit (Klassenbuch) aendert die
+Matrix-Anwesenheit
+.B nicht
+\(em zwei getrennte Systeme.
+.TP
+.B absenzen eintragen
+Schueler abwesend eintragen (echter Klassenbuch-Eintrag, Write).
+Termin per
+.B \-\-termin-id
+oder
+.B \-\-datum
+(Standard heute, via KLASSE/FACH-Adresse). Standard ist der ganze
+Stundenblock wie in der Untis-UI;
+.B \-\-kein-block
+traegt nur die Einzelstunde ein (braucht
+.BR \-\-termin-id ).
+.TP
+.B absenzen entfernen
+Bestehende Abwesenheit loeschen (Write, Dialog-CSRF-Flow). Ziel per
+.B \-\-absenz-id
+(direkt, aus
+.BR "absenzen zeigen \-\-termin-id" )
+oder per
+.B \-\-schueler-id\fR/\fB\-\-schueler-name
+plus Termin
+.RB ( \-\-termin-id
+oder
+.BR \-\-datum ).
+.TP
+.B absenzen pruefen
+Absenzenpruefung durchfuehren (Write). Mit
+.B \-\-termin-id\fR:
+genau dieser Termin; ohne: alle ungeprueften Termine der Lesson im
+Zeitraum (Standard: Schuljahresstart bis heute).
+.SS student \- alles zu einem Schueler
+.BI "wu student " [ NAME ]
+.RI [ OPTIONEN ]
+.PP
+Suche (tokenisierend, findet auch zweiteilige Namen via Einzelteile +
+Kurzname-Heuristik, als solche markiert), Klasse, Klassenvorstand sowie
+belegte/nicht belegte Lessons aus dem Schueler-Stundenplan \(em ohne
+Matrix-Calls. Belegt heisst eingeschrieben (Fach erscheint im
+Schueler-Plan); Anwesenheit spielt keine Rolle. Klassenfremde Lessons
+(andere Klasse im Schueler-Plan) werden extra gelistet.
+.TP
+.B \-\-id
+Direktzugriff per Schueler-ID statt Namenssuche (nur aktuelles Roster,
+kein Jahr-Fallback). Entweder NAME oder
+.B \-\-id
+\(em genau eins.
+.TP
+.B \-\-klasse
+Treffer auf eine Klasse filtern.
+.TP
+.B \-\-wortteile
+Vor-/Nachname einzeln suchen und zusammenfuehren.
+.TP
+.B \-\-alle-jahre
+Zusaetzlich aeltere Schuljahre durchsuchen (max. drei); Treffer von dort
+sind als NICHT AKTUELL markiert
+.RB ( current :\ false ).
+Die Stundenplan-Suche ist schuljahr-sensitiv, waehrend das aktuelle
+Roster immer das laufende Schuljahr zeigt.
+.TP
+.B \-\-absenzen
+Zusaetzlich Absenzen der EIGENEN Lessons der Klasse (je Lesson ein
+Matrix-Call, mit
+.B \-\-pause
+gedrosselt, Standard 1.0 s). Ohne diese Option bleibt die Ausgabe
+matrix-frei.
+.SS offen \- Arbeitsvorrat offener Perioden
+.BI "wu offen " "liste | status | verifizieren | vorschlag | eintragen | festtexte | pruefen"
+.RI [ "\-\-von " START " \-\-bis " ENDE ]
+.PP
+Offene Perioden schulden noch Lehrstoff oder Absenzenprüfung.
+Erledigte Lessons fehlen in dieser Sicht (nur offene Stati); die
+vollstaendige Lesson-Enumeration liefert
+.BR "klasse faecher" .
+Ohne
+.B \-\-von\fR/\fB\-\-bis
+gilt der Schuljahr-Default: Schuljahr-Start bis heute (aus
+.IR open-periods/meta ;
+die UI-Ansicht endet ebenfalls bei heute \(em Zukunft ist nie offen).
+Halb angegeben (nur eines) ist ein Usage-Fehler; der Default wird nach
+stderr gemeldet.
+.TP
+.B liste
+Offene Perioden im Zeitraum auflisten.
+.TP
+.B status
+Ueberblick: Zaehlung nach Fach und Klasse+Fach.
+.TP
+.B verifizieren
+Trennt \(dqwirklich leer\(dq (kein Text) von \(dqhat Text, nur
+Absenzenpruefung fehlt\(dq \(em je Termin ein API-Call.
+.TP
+.B vorschlag
+Baut Vorschlag-JSON aus offenen Perioden + Commits/Diffs je Block
+(blocks + skipped) und gibt es aus. Schreibt nichts. Texte pruefen und
+bestaetigen, dann
+.BR "offen eintragen \-\-datei" .
+Vorschlags-Format je Block:
+.IR periodId ,
+.IR topicId ,
+.IR text ,
+.IR classId ,
+.IR start ,
+.IR end ,
+.IR date
+(plus
+.I commits
+und
+.I diffs
+als Quelle). Ausgabe eignet sich zur Weiterverarbeitung
+(z.B. per Skill/Agent).
+.TP
+.B eintragen
+Bestaetigte Lehrstoffe aus einer JSON-Datei eintragen (Write, je Eintrag
+ein PUT):
+.RI [{ periodId ", " topicId ", " text ", " classId ", " start ", " end ", " date }, ...].
+Mit
+.B \-\-pause
+gedrosselt (Standard 1.0 s, gegen IP-Rate-Limit, siehe
+.BR HINWEISE ).
+.TP
+.B festtexte
+Offene Perioden mit Festtext fuellen (Faecher SS \(em Sprechstunde, BESP
+\(em Bewegung und Sport).
+.B \-\-testlauf
+(Standard) zeigt nur,
+.B \-\-ausfuehren
+schreibt.
+.TP
+.B pruefen
+Absenzenpruefung fuer offene Perioden (Write). Mit
+.B \-\-datei\fR:
+Perioden aus Datei
+.RI ([{ periodId }, ...]);
+ohne: alle pruefbeduerftigen Perioden in
+.BR \-\-von /\-\-bis .
+.SS search \- suchen mit Detail-Dispatch
+.BI "wu search " ANFRAGE
+.RI [ OPTIONEN ]
+.PP
+Textsuche ueber Klassen, Lehrer und Schueler (volle Namen inklusive).
+Mit
+.B \-\-detail
+und genau einem Treffer oeffnet sich die Detail-Sicht: Schueler
+\(-> Student-Detail, Lehrer \(-> Steckbrief + KV-Klassen (kein
+Wochenplan \(em fremde Lehrerplaene sind nicht lesbar), Klasse \(->
+Klassen-Uebersicht.
+.B \-\-wortteile
+und
+.B \-\-alle-jahre
+wie bei
+.BR student .
+.SS raum \- Raeume (Stubs)
+.B wu raum suchen
+.RI [ OPTIONEN ]
+.br
+.B wu raum groesse
+.I RAUM
+.PP
+Reserviert das CLI-Vokabular fuer die geplante Freie-Raum-Suche
+(Belegung aus Raum-Stundenplaenen, Sitzplatz-Filter aus dem
+Raumverzeichnis). Noch nicht implementiert: beide Befehle melden Exit 3.
+Optionen (geplante Semantik):
+.BR \-\-datum
+(auch
+.BR morgen ),
+.BR \-\-stunde ,
+.BR \-\-min-plaetze ,
+.BR \-\-max-plaetze ,
+.BR \-\-nur-freie .
+.SH OPTIONEN
+Globale und wiederkehrende Schalter (alle Befehle verstehen
+.BR \-\-schuljahr-id ;
+jeweils dokumentiert, ob davor und/oder dahinter stellbar \(em
+Unterbefehl gewinnt bei doppelter Angabe):
+.TP
+.B \-\-json
+Strukturierte JSON-Ausgabe (Schluessel englisch) statt Text/TSV.
+.TP
+.B \-\-schuljahr-id \fISCHULJAHR_ID
+Schuljahr festlegen statt automatisch aufloesen.
+.TP
+.B \-\-datum \fIDATUM
+Termin-Tag: JJJJ-MM-TT oder
+.BR heute .
+.TP
+.B \-\-von \fISTART \fB\-\-bis \fIENDE
+Zeitraum (JJJJ-MM-TT). Bei
+.B offen
+optional (Standard: Schuljahr-Start bis heute); sonst je nach Befehl
+Pflicht oder mit eigenem Default.
+.TP
+.B \-\-pause \fISEKUNDEN
+Sekunden zwischen API-Calls (Standard 1.0, gegen IP-Rate-Limit).
+.TP
+.B \-\-testlauf
+Nur zeigen/protokollieren, nichts schreiben (Standard aller Writes).
+.TP
+.B \-\-ausfuehren
+Wirklich schreiben (Write).
+.TP
+.B \-\-klassen-id \fIKLASSEN_ID
+Klassen-ID (fuer
+.BR aufnehmen / anpassen / matrix ;
+per
+.B \-\-json
+- oder
+.B intern
+-Aufrufen ermittelbar).
+.TP
+.B \-\-termin-id \fIPERIOD_ID
+Termin-ID (periodId).
+.TP
+.B \-\-thema-id \fITHEMA_ID
+Lehrstoff-Zeilen-ID (0 = neu anlegen).
+.TP
+.B \-\-text-datei \fIDATEI\fB, \fB\-\-text-stdin\fB, \fB\-\-text \fITEXT
+Textquellen fuer
+.BR "lehrstoff eintragen" .
+Umlaute nur per Datei/stdin (Shell-Falle, siehe
+.BR HINWEISE ).
+.TP
+.B \-\-datei \fIDATEI
+Batch-JSON-Datei fuer
+.BR "offen eintragen" / "offen pruefen" .
+.TP
+.B \-\-ohne-kopf
+TSV ohne Kopfzeile (fuer
+.BR roster ).
+.TP
+.B \-\-fach \fIPRAEFIX\fB, \fB\-\-volle-namen
+Filter und Lehrer-Vollnamen (fuer
+.BR "klasse faecher" ).
+.SH ARBEITSABLAEUFE
+.SS Fehlende Lehrstoffe nachtragen
+.EX
+wu offen status --von 2026-09-01 --bis 2026-09-30
+wu offen vorschlag --von 2026-09-01 --bis 2026-09-30 > vorschlag.json
+# Texte in vorschlag.json pruefen/bestaetigen, dann:
+wu offen eintragen --datei batch.json --pause 1.0
+.EE
+.PP
+Fuer Faechern ohne Git-Content (SS, BESP) stattdessen:
+.EX
+wu offen festtexte --von 2026-09-01 --bis 2026-09-30
+wu offen festtexte --von 2026-09-01 --bis 2026-09-30 --ausfuehren
+.EE
+.SS Einzelnen Lehrstoff schreiben
+.EX
+wu lesson 5XZY/SWP1x lehrstoff zeigen --termin-id PERIOD_ID
+wu lesson 5XZY/SWP1x lehrstoff eintragen --termin-id PERIOD_ID \\
+    --text-datei /tmp/topic.txt
+.EE
+.SS Absenzen pruefen und Abwesenheit eintragen
+.EX
+wu lesson 5XZY/SWP1x absenzen pruefen --termin-id PERIOD_ID
+wu offen pruefen --von 2026-09-01 --bis 2026-09-30 --pause 1.5
+wu lesson 5XZY/SWP1x absenzen eintragen \\
+    --schueler-name "Erika Muster" --datum 2026-09-25
+wu lesson 5XZY/SWP1x absenzen zeigen --termin-id PERIOD_ID
+wu lesson 5XZY/SWP1x absenzen entfernen \\
+    --absenz-id ABSENCE_ID --termin-id PERIOD_ID
+.EE
+.SS Neuen Schueler in eine Lesson aufnehmen
+.EX
+wu student "Erika Muster"
+wu lesson 5XZY/SWP1x anpassen --aufnehmen-id STUDENT_ID \\
+    --klassen-id CLASS_ID
+wu lesson 5XZY/SWP1x anpassen --aufnehmen-id STUDENT_ID \\
+    --klassen-id CLASS_ID --ausfuehren
+.EE
+.PP
+Erst Testlauf (zeigt die volle Payload, mit
+.B \-\-details
+im Detail), dann
+.BR \-\-ausfuehren .
+Nach dem Write das Roster gegenpruefen.
+.SH INTERNALS
+Der Zweig
+.B intern
+ist bewusst aus der Hilfe versteckt (Escape-Hatch fuer Entwicklung,
+Session-Management und Agenten-Setup); im Alltag nicht noetig.
+.TP
+.B intern login\fR / \fBintern logout
+Session auf-/abbauen (persistierter Login, siehe
+.BR DATEIEN ).
+.TP
+.B intern session status
+Session-Status anzeigen.
+.TP
+.B intern record
+CDP-Recorder starten (Optionen
+.BR \-\-host ,
+.BR \-\-port ,
+.BR \-\-domain ;
+braucht Brave mit Debug-Port, siehe README). Haengt sich an den
+laufenden Browser, zeichnet WebUntis-Netzwerkverkehr auf und erntet am
+Ende die Session-Cookies.
+.TP
+.B intern rpc \fIMETHODE\fR [\fIPARAMS_JSON\fR]
+Generischer JSON-RPC-Passthrough (z.B.
+.BR getKlassen ).
+.TP
+.B intern rest \fIPFAD\fR [\fB\-\-method \fIMETHODE\fR] [\fB\-\-data-json \fIBODY\fR]
+Generischer REST-Passthrough, Pfad relativ zu
+.IR /WebUntis/api .
+Beide Passthroughs sind schreibfaehig (Variante B); Methode+Body werden
+nach stderr protokolliert.
+.SH RUECKGABEWERTE
+.TP
+.B 0
+Erfolg.
+.TP
+.B 1
+Kein Befehl (Hilfe wird gedruckt).
+.TP
+.B 2
+Verwendungs-/Server-Fehler: falsche Argumente, Klasse/Schueler nicht
+gefunden, mehrdeutige Namenssuche, unbekannte oder rechte-fremde Lesson
+(Server meldet generisch
+.IR "code 0: Internal server error" ;
+.B wu
+mappt das auf
+.BR UnknownLessonError ,
+Meldung nach stderr, kein Traceback).
+.TP
+.B 3
+Noch nicht implementiert
+.RB ( raum -Stubs)
+oder fehlendes Python-Modul (mit Setup-Anleitung nach stderr).
+.SH DATEIEN
+.TP
+.I .env
+Zugangsdaten im Repo-Wurzelverzeichnis (gitignored):
+.B user\fR/\fBpassword
+(auch
+.BR WEBUNTIS_USER / WEBUNTIS_PASSWORD ),
+.B school\fR/\fBhost
+(auch
+.BR WEBUNTIS_SCHOOL / WEBUNTIS_HOST ).
+Vorlage:
+.IR .env.example .
+.TP
+.I .webuntis_session.json
+Persistierter Login (Session-Cookies, Modus 600, gitignored) neben
+.IR .env .
+Wiederverwendet die Session, frischt das JWT automatisch auf (ca. 15
+Minuten Gueltigkeit, Refresh 60 s vor Ablauf).
+.TP
+.I recordings/
+CDP-Mitschnitte
+.RI ( {Zeitstempel}_{Domain}_{Typ}.jsonl
+plus Cookies-JSON), gitignored \(em enthalten Session-Cookies.
+.SH UMGEBUNG
+.TP
+.B PYTHON_BIN
+Alternativer Python-Interpreter fuer das
+.B wu
+-Skript (Standard: Repo-venv
+.IR .venv/bin/python ,
+Fallback
+.BR python3 ).
+.TP
+.B PYTHONPATH
+Wird von
+.B wu
+um
+.I src
+erweitert.
+.SH HINWEISE UND FALLEN
+.TP
+.B IP-Rate-Limit (TCP-Resets, kein HTTP 429)
+WebUntis drosselt pro IP auf TCP-Ebene: nach ca. 50 schnellen Calls
+werden neue Verbindungen zurueckgesetzt. Loesung:
+.B \-\-pause
+(z.B. 1.0) zwischen PUTs/Calls, Retry-mit-Backoff im Client; die
+Sperre loest sich nach ca. 30\(en60 Sekunden.
+.TP
+.B Umlaute in \-\-text
+Die Shell verstuemmelt Umlaute beim Uebergeben (aus
+\(dqU mit Umlaut\(dq wird \(dqUe\(dq). Immer
+.B \-\-text-datei
+oder
+.B \-\-text-stdin
+verwenden.
+.TP
+.B Stundenplan kennt keine Lesson-IDs
+Stundenplan-Eintraege tragen Perioden-IDs, keine lsIds; die lsId kommt
+aus
+.B calendar-entry/detail
+(Resolver) oder dem Klassenbuch-ViewModel.
+.TP
+.B Matrix ist rechte-beschraenkt
+Fremde Lessons (andere Lehrer derselben Klasse) melden denselben
+generischen Server-Fehler wie unbekannte lsIds. Der Resolver bevorzugt
+daher bei Mehrdeutigkeit die eigene Lesson.
+.TP
+.B Block-Partner
+Ein Lehrstoff-PUT bzw. eine Absenz-Aktion gilt fuer den ganzen
+Stundenblock (gleiche lsId).
+.TP
+.B Schuljahr-IDs raten nicht
+IDs sind nicht ableitbar (Luecken existieren); immer dynamisch
+aufloesen lassen oder explizit per
+.B \-\-schuljahr-id
+setzen.
+.TP
+.B ehemalige Schueler
+Die Stundenplan-Suche ist schuljahr-sensitiv (ID kann in aelteren Jahren
+existieren und im aktuellen fehlen); nur
+.B student
+hat automatischen Jahr-Fallback, alles andere bleibt beim aktuellen
+Jahr.
+.SH ANONYMISIERUNG
+Dieses Repository ist oeffentlich. Beispiele in dieser Man-Page sind
+fiktiv
+.RB ( Erika\ Muster ,
+.BR 5XZY ,
+Platzhalter
+.IR PERIOD_ID ,
+.IR STUDENT_ID ,
+.IR LESSON_ID ,
+.IR CLASS_ID ,
+.IR ABSENCE_ID ).
+Echte IDs, Klassen- und Personennamen gehoeren nicht in getrackte
+Dateien \(em Live-IDs liefert die CLI in Sekunden
+.RB ( \-\-json ,
+.BR "intern rest" ).
+Personenbezogenes nur auf ausdruecklichen Wunsch und nur nach
+.IR docs/ai/LOCAL.md
+(gitignored, lokal).
+.SH SIEHE AUCH
+.BR docs/WEBUNTIS_API.md
+(Endpunkt-Referenz mit Schablonen),
+.BR docs/ai/PITFALLS.md
+(Fallen im Detail),
+.BR docs/ai/DECISIONS.md
+(Entscheidungen, u.a. verstecktes
+.BR intern ),
+der
+.B fill-open-periods
+-Skill
+.RI ( .opencode/skills/fill-open-periods/SKILL.md )
+sowie
+.BR wu " --help"
+(und jede Gruppen-Hilfe) fuer die Kurzform.
+.SH AUTOR
+Georg Graf \(em Lehrkraft, HTL Spengergasse (Wien).
+.B wu
+ist Begleitwerkzeug der GRG-*-Unterrichts-Repositories; die
+WebUntis-Schreibendpunkte sind per CDP-Mitschnitt reverse-engineered
+(keine oeffentliche API).

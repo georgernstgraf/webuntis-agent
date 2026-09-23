@@ -80,6 +80,11 @@ Domain-Objekte: **Klasse** (`wu klasse 3AHWII`), **Lesson** als
 (`wu student "Erika Muster"`). Alle Ausgaben sind deutsch;
 `wu --help` (und jede Gruppen-Hilfe) erklärt mit Beispielen.
 
+> **Bedienungsanleitung:** Die vollständige Referenz — alle Befehle,
+> Optionen, Arbeitsabläufe, Exit-Codes und Fallen, mehr als `--help` —
+> steht in der Man-Page `man/wu.1`:
+> `man --local-file man/wu.1`
+
 ### Offene Perioden (Arbeitsvorrat: Lehrstoff oder Absenzen fehlen)
 
 ```bash
