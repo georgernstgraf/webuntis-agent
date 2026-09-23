@@ -1,7 +1,7 @@
 # Architecture
 
-Living structural map of the system as of 2026-09-21 (Stundenplan-Serie).
-Overwritten when structural changes occur during a session.
+Living structural map of the system as of 2026-09-21 (nach Man-Page +
+offen-Default). Overwritten when structural changes occur during a session.
 
 ## Overview
 
@@ -29,6 +29,15 @@ fill-open-periods workflow with human confirmation.
 | `cli_raum.py` | `raum` (suchen/groesse — Stubs, Exit 3; Freie-Raum-Suche Folgeissue) |
 | `cli_intern.py` | `intern` (versteckt: login/logout/session/record/rpc/rest) |
 
+## Man-Page & Drift-Test
+
+- `man/wu.1` — autoritative Bedienreferenz (groff, deutsch): Kommandos,
+  Optionen, Workflows, Exit-Codes, FILES/ENVIRONMENT, Fallen, INTERNALS.
+  Pflichtlektüre für Agents (AGENTS.md-Abschnitt "CLI manual").
+- `tests/test_manpage.py` — Drift-Test: leitet Kommando-/Options-Inventar
+  aus `add_parser`/`add_argument`-Literalen in `cli*.py` ab und assertet
+  Vorkommen in `wu.1`; groff-Render-Check (`-Tutf8`).
+
 ## CLI Commands (deutsch, Stand 2026-09-21; alt→neu s. README)
 
 | Command | Purpose |
@@ -43,7 +52,7 @@ fill-open-periods workflow with human confirmation.
 | `lesson K/F absenzen pruefen` | Absenzenprüfung (Write) |
 | `lesson K/F aufnehmen\|anpassen` | Teilnehmer-Writes (Testlauf-Standard) |
 | `student NAME [--absenzen]` | Treffer + Detail: Klasse, KV, belegte/nicht belegte Lessons aus Plan-Join (0 Matrix-Calls); --absenzen: eigene Lessons |
-| `offen liste\|status\|verifizieren` | Arbeitsvorrat lesen |
+| `offen liste\|status\|verifizieren` | Arbeitsvorrat lesen (`--von/--bis` optional: Default Schuljahr-Start..heute aus `open-periods/meta`) |
 | `offen vorschlag` | Vorschlag-JSON aus Git-Logs (Skill-Input, schreibt nichts) |
 | `offen eintragen --datei` | bestätigte Lehrstoffe schreiben |
 | `offen festtexte` | SS/BESP-Festtexte (Testlauf-Standard) |
@@ -62,6 +71,8 @@ fill-open-periods workflow with human confirmation.
   (= Matrix-lsId, verifiziert); Resolver bevorzugt bei Mehrdeutigkeit
   die eigene Lesson (Matrix ist rechte-beschränkt)
 - `open-periods` nur noch: Offen-Status, Arbeitsvorrat, Resolver-Fallback
+- `open-periods/meta`: `schoolYear.{start,end}`/`defaultFilter` — Quelle des
+  `offen`-Schuljahr-Defaults (UI-Semantik: Ende auf heute gedeckelt)
 ## `wu` Wrapper
 
 Bash shortcut (tracked at repo root), symlink-fähig: `readlink -f`

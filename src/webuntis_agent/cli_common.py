@@ -381,11 +381,51 @@ def _period_summary(p: dict) -> dict:
 
 
 def _fetch_open_periods(args: argparse.Namespace):
-    """Shared helper: create client, resolve schoolyear, fetch periods."""
+    """Shared helper: create client, resolve schoolyear, fetch periods.
+
+    --von/--bis optional (Schuljahr-Default via _resolve_von_bis).
+    """
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
-    data = c.get_open_periods(args.start, args.end, school_year_id=sy)
+    start, end = _resolve_von_bis(args, c, sy)
+    data = c.get_open_periods(start, end, school_year_id=sy)
     return c, sy, data.get("periods", [])
+
+
+def _default_von_bis(c: Client, sy: int) -> tuple[str, str]:
+    """Schuljahr-Default für offen-Zeiträume: Start..heute (UI-Semantik).
+
+    Quelle: open-periods/meta (schoolYear.start/end); Ende auf heute
+    gedeckelt — Zukunft ist nie offen (s. /open-periods-Mitschnitt).
+    Wirft RuntimeError ohne Meta-Range.
+    """
+    meta = c.get_open_periods_meta(school_year_id=sy)
+    yr = meta.get("schoolYear") or {}
+    start, end = yr.get("start"), yr.get("end")
+    if not start or not end:
+        raise RuntimeError("open-periods/meta ohne schoolYear-Range — "
+                           "--von/--bis explizit angeben")
+    return start, min(date.today().isoformat(), end)
+
+
+def _resolve_von_bis(args: argparse.Namespace, c: Client,
+                     sy: int) -> tuple[str, str]:
+    """--von/--bis auflösen: beide oder keins (Schuljahr-Default).
+
+    Halb angegeben (nur eins) ist ein Usage-Fehler (Exit 2); der Default
+    wird nach stderr gemeldet (stdout bleibt weiterverarbeitbar).
+    """
+    start = getattr(args, "start", None)
+    end = getattr(args, "end", None)
+    if start and end:
+        return start, end
+    if bool(start) != bool(end):
+        print("nötig: --von und --bis gemeinsam "
+              "(oder keins: Schuljahr-Default)", file=sys.stderr)
+        raise SystemExit(2)
+    start, end = _default_von_bis(c, sy)
+    print(f"Zeitraum-Default: Schuljahr {start}..{end}", file=sys.stderr)
+    return start, end
 
 
 def _no_open_periods(args: argparse.Namespace) -> int:

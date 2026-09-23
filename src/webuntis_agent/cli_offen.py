@@ -18,16 +18,18 @@ from webuntis_agent.cli_common import (
     _no_open_periods,
     _open_period_entries,
     _period_summary,
+    _resolve_von_bis,
     _sleep_between,
     _submit_topic_entries,
 )
 
 
 def cmd_offen_liste(args: argparse.Namespace) -> int:
-    """Offene Perioden im Zeitraum auflisten."""
+    """Offene Perioden im Zeitraum auflisten (Default: Schuljahr bis heute)."""
     c = _make_client(args)
     sy = c.resolve_schoolyear_id(override=args.school_year_id)
-    entries = _open_period_entries(c, sy, args.start, args.end)
+    start, end = _resolve_von_bis(args, c, sy)
+    entries = _open_period_entries(c, sy, start, end)
     if not entries:
         return _no_open_periods(args)
     if args.json:
@@ -307,8 +309,8 @@ def cmd_offen_pruefen(args: argparse.Namespace) -> int:
     """Absenzenprüfung für offene Perioden durchführen (Write).
 
     Mit --datei: Perioden aus JSON-Datei ([{periodId}, ...]).
-    Ohne: alle prüfbedürftigen Perioden im Zeitraum --von/--bis.
-    Zwischen den Calls --pause Sekunden (IP-Rate-Limit).
+    Ohne: alle prüfbedürftigen Perioden im Zeitraum (Default: Schuljahr
+    bis heute). Zwischen den Calls --pause Sekunden (IP-Rate-Limit).
     """
     from pathlib import Path
     c = _make_client(args)
@@ -316,9 +318,6 @@ def cmd_offen_pruefen(args: argparse.Namespace) -> int:
         items = json.loads(Path(args.datei).read_text(encoding="utf-8"))
         pids = [it["periodId"] for it in items]
     else:
-        if not args.start or not args.end:
-            print("nötig: --datei oder --von/--bis", file=sys.stderr)
-            return 2
         c2, sy, periods = _fetch_open_periods(args)
         c = c2
         need = [p for p in periods if p.get("absCheckNeeded")]

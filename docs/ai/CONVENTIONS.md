@@ -9,7 +9,8 @@ Follow these without question. Do not deviate unless explicitly told.
 - Lesson-Adresse: genau EIN Positionsargument `KLASSE/FACH`
   (z.B. `3AHWII/SWP1x`); `--lsid` nur als direkter Ausweg
 - Optionen: `--schuljahr-id`, `--datum (YYYY-MM-DD|heute)`,
-  `--von/--bis` (Zeiträume), `--testlauf/--ausfuehren`,
+  `--von/--bis` (Zeiträume; bei `offen` optional, Default
+  Schuljahr-Start..heute aus open-periods/meta), `--testlauf/--ausfuehren`,
   `--text-datei`, `--klassen-id`, `--termin/--thema-id`, `--datei`,
   `--pause`; `--json` und `--lsid` bleiben (sprachneutral)
 - Flags sind deutsch, `dest`s (args-Attribute) bleiben englisch

@@ -156,3 +156,21 @@ Superseded decisions are relocated to HISTORY.md.
 - **Reason**: User always wants a class list (attendance check happens anyway); a mislabeled list would be worse than a substituted one, hence the visible date + stderr note
 - **Considered**: Hard error on missing unit (first version); nearest-by-distance with future tie-break (rejected — no date tricks)
 - **Tradeoff**: Pasted lists may cover a different day than requested — mitigated by the visible effective date
+
+## 2026-09-21: offen-Zeitraum-Default aus open-periods/meta (Schuljahr bis heute)
+- **Choice**: `--von/--bis` bei allen `offen`-Befehlen optional; ohne
+  Angabe gilt Schuljahr-Start..heute aus `GET open-periods/meta`
+  (`schoolYear.start`, Ende auf heute gedeckelt — UI-Semantik der
+  /open-periods-Schuljahr-Ansicht, per CDP-Mitschnitt verifiziert:
+  OnLoad heute..heute, Schuljahr-Wahl Start..heute, Zukunft nie offen).
+  Halb angegeben (nur eins) ist Usage-Fehler (Exit 2); der Default wird
+  nach stderr gemeldet. Neuer Client-Call `get_open_periods_meta()`.
+- **Reason**: Nutzer-Vorgabe („Standardmäßig immer das gesamte
+  Schuljahr"); Meta statt Schuljahr-Range aus getSchoolyears, weil die
+  UI exakt diese Quelle nutzt.
+- **Considered**: --von/--bis weiter Pflicht (abgelehnt — Reibung im
+  Standard-Workflow); Default Schuljahr-Start..Schuljahr-Ende
+  (abgelehnt — Zukunft ist nie offen, UI kappt bei heute)
+- **Tradeoff**: ein zusätzlicher Meta-Call pro offen-Aufruf ohne
+  Zeitraum; Meta-Ausfall ohne expliziten Zeitraum wirft RuntimeError
+  statt zu raten

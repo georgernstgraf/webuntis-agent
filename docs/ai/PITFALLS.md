@@ -41,6 +41,13 @@ Read this file carefully before making changes in affected areas.
 
 ## Recorder
 
+- **Brave-Debug-Rauschen ist kein Recorder-Fehler**: `[OpenH264]`- und
+  `puffin ... Operation not permitted`-Meldungen stammen aus Brave
+  selbst (Codec/Sandbox des Component-Updaters) — der Recorder fährt
+  sauber herunter, wenn er Cookies erntet
+  (`harvesting cookies … done`). Echte Recorder-Fehler stünden in
+  `[recorder]`-Zeilen.
+
 - **Response body capture**: `Network.getResponseBody` must be called AFTER `Network.loadingFinished` (not after `responseReceived`). The body isn't available until loading completes.
 - **No console output file**: If the page doesn't use `console.*`, no `_console.jsonl` is created. This is normal, not a bug.
 - **Brave must be started with debug port**: `scripts/brave-debug.sh` starts Brave with `--remote-debugging-port=9222`. If Brave is already running without the port, the recorder can't attach.
@@ -144,6 +151,10 @@ Read this file carefully before making changes in affected areas.
   anwesende Schüler aus dem `students`-Array (Wire-Format, englisch) zu
   streichen meldet sie ab. Immer via `_build_students_payload()` bauen
   (Klassen-Roster + alle Anwesenden jeder Klasse bleiben).
+- **UI-Schuljahr-Ansicht endet heute**: Die /open-periods-Ansicht
+  „gesamtes Schuljahr" sendet `schoolYear.start`..heute (nie
+  Schuljahr-Ende) — Zukunft ist per Definition nie offen. Der
+  `offen`-Schuljahr-Default bildet exakt das ab (s. DECISIONS.md).
 
 ## Privacy
 

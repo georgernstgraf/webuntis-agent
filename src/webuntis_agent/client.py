@@ -762,6 +762,20 @@ class Client:
         r.raise_for_status()
         return r.json()
 
+    def get_open_periods_meta(self,
+                              school_year_id: int | None = None) -> dict[str, Any]:
+        """Metadata for the /open-periods UI view (read-only).
+
+        Returns allowedFilters, defaultFilter, canReadAll/canSeeHistory,
+        onLoadStartDate and schoolYear {start, end} plus the subject and
+        teacher catalogs. Reverse-engineered from the /open-periods SPA
+        route (recording 20260921-231543); the UI loads the view with
+        dateRange today..today and the schoolyear selector with
+        schoolYear.start..today (capped at today — future is never open).
+        """
+        return self.rest("rest/view/v1/classreg/open-periods/meta",
+                         school_year_id=school_year_id)
+
     def get_lesson_topic(self, period_id: int,
                          nearby: int = -5,
                          school_year_id: int | None = None) -> dict[str, Any]:

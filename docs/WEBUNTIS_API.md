@@ -191,7 +191,38 @@ obtainable within seconds from any live CLI call (`--json` outputs,
   `X-Webuntis-Api-School-Year-Id: <id>`, `Tenant-Id: <id>`
 - Body: `{"teacherId":<person_id>,"filter":"TOPIC_OR_ABSENCE_OPEN","dateRange":{"start":"<yyyy-MM-dd>","end":"<yyyy-MM-dd>"}}`
 - Response: `{"periods":[{period:{id,classes,subject,teachers,dtRange,...},topicId,topicNeeded,absCheckNeeded,...}]}`
-- CLI: `wu offen liste --von <d> --bis <d>`
+- UI source: the `/open-periods` SPA route calls exactly this endpoint
+  (teacher-scoped via JWT person_id). OnLoad fires `dateRange`
+  today..today; the schoolyear selector sends
+  `schoolYear.start`..today — the view is capped at today, future is
+  never open. Default filter `TOPIC_OR_ABSENCE_OPEN` (see meta below).
+- Recording source: `20260921-231543` (/open-periods page load +
+  schoolyear-selector switch; 0 periods for today..today, N periods
+  for start..today)
+- CLI: `wu offen liste --von <d> --bis <d>` (ohne Zeitraum:
+  Schuljahr-Default aus Meta, s. `offen`-Befehle)
+
+### getOpenPeriodsMeta
+
+- Purpose: metadata for the `/open-periods` view — allowed/default
+  filters, schoolyear range (source of the CLI Schuljahr-Default),
+  subject/teacher catalogs
+- Method: `GET /WebUntis/api/rest/view/v1/classreg/open-periods/meta`
+- Headers: `Cookie`, `Authorization: Bearer <jwt>`,
+  `X-Webuntis-Api-School-Year-Id: <id>`, `Tenant-Id: <id>`
+- Response: `{"allowedFilters":["TOPIC_OR_ABSENCE_OPEN","ABSENCE_OPEN",
+  "TOPIC_OPEN"],"defaultFilter":"TOPIC_OR_ABSENCE_OPEN",
+  "canReadAll":false,"canSeeHistory":false,
+  "onLoadStartDate":"<yyyy-MM-dd>",
+  "schoolYear":{"start":"<yyyy-MM-dd>","end":"<yyyy-MM-dd>"},
+  "subjects":[{el:{id,name,nameShort},...}],
+  "teachers":[{el:{id,name,nameShort},...}],"classes":[],"myClassIds":[]}`
+  — `classes`/`myClassIds` are empty for teacher accounts
+  (teacher-scoped view, confirmed by `canReadAll: false`)
+- Write warning: none (read-only)
+- Recording source: `20260921-231543` (page load, one call)
+- CLI: no direct command — used internally by every `offen` call
+  without `--von/--bis` (Schuljahr-Default); `Client.get_open_periods_meta()`
 
 ### getLessonTopicMeta
 

@@ -67,12 +67,21 @@ def _add_testlauf(sp):
                     help="wirklich schreiben (Write)")
 
 
-def _add_von_bis(sp, required=True):
-    """Zeitraum --von/--bis (YYYY-MM-DD)."""
+def _add_von_bis(sp, required=True, schuljahr_default=False):
+    """Zeitraum --von/--bis (YYYY-MM-DD).
+
+    Mit schuljahr_default=True (nur offen-Befehle): beide optional,
+    Default ist Schuljahr-Start..heute aus open-periods/meta.
+    """
+    h_start = "Zeitraum-Start (JJJJ-MM-TT)"
+    h_end = "Zeitraum-Ende (JJJJ-MM-TT)"
+    if schuljahr_default:
+        h_start += " (Standard: Schuljahr-Start)"
+        h_end += " (Standard: heute)"
     sp.add_argument("--von", dest="start", type=_date_arg, required=required,
-                    help="Zeitraum-Start (JJJJ-MM-TT)")
+                    help=h_start)
     sp.add_argument("--bis", dest="end", type=_date_arg, required=required,
-                    help="Zeitraum-Ende (JJJJ-MM-TT)")
+                    help=h_end)
 
 
 def _add_json(sp):
@@ -521,7 +530,8 @@ def main() -> int:
     off = sub.add_parser(
         "offen", help="Arbeitsvorrat: offene Perioden (Lehrstoff/Absenzen)",
         description="Offene Perioden schulden noch Lehrstoff oder "
-                    "Absenzenprüfung. Arbeitsvorrat im Zeitraum --von/--bis: "
+                    "Absenzenprüfung. Arbeitsvorrat im Schuljahr-Default "
+                    "(Schuljahr-Start bis heute, einengbar per --von/--bis): "
                     "auflisten, Überblick, verifizieren, Vorschläge aus Git "
                     "bauen, bestätigte Texte eintragen, Festtexte füllen, "
                     "Absenzen prüfen.",
@@ -534,13 +544,13 @@ def main() -> int:
     off_sub = off.add_subparsers(dest="sub", required=True)
     off_liste = off_sub.add_parser(
         "liste", help="offene Perioden im Zeitraum auflisten")
-    _add_von_bis(off_liste)
+    _add_von_bis(off_liste, required=False, schuljahr_default=True)
     _add_json(off_liste)
     _add_school_year_arg(off_liste)
     off_liste.set_defaults(func=cmd_offen_liste)
     off_status = off_sub.add_parser(
         "status", help="Überblick: Zählung nach Fach und Klasse+Fach")
-    _add_von_bis(off_status)
+    _add_von_bis(off_status, required=False, schuljahr_default=True)
     _add_json(off_status)
     _add_school_year_arg(off_status)
     off_status.set_defaults(func=cmd_offen_status)
@@ -549,7 +559,7 @@ def main() -> int:
         help="welche Perioden wirklich ohne Lehrstoff-Text sind",
         description="Trennt 'wirklich leer' (kein Text) von 'hat Text, nur "
                     "Absenzenprüfung fehlt' — je Termin ein API-Call.")
-    _add_von_bis(off_verif)
+    _add_von_bis(off_verif, required=False, schuljahr_default=True)
     _add_json(off_verif)
     _add_school_year_arg(off_verif)
     off_verif.set_defaults(func=cmd_offen_verifizieren)
@@ -559,7 +569,7 @@ def main() -> int:
         description="Lädt offene Perioden + Commits/Diffs je Block und gibt "
                     "Vorschlag-JSON aus (blocks + skipped). Schreibt nichts. "
                     "Texte prüfen/bestätigen, dann `offen eintragen --datei`.")
-    _add_von_bis(off_vorschlag)
+    _add_von_bis(off_vorschlag, required=False, schuljahr_default=True)
     _add_school_year_arg(off_vorschlag)
     off_vorschlag.set_defaults(func=cmd_offen_vorschlag)
     off_eintragen = off_sub.add_parser(
@@ -578,7 +588,7 @@ def main() -> int:
         "festtexte", help="Festtext-Fächer (SS, BESP) füllen",
         description="Offene Perioden mit Festtext (SS/BESP) füllen. "
                     "--testlauf (Standard) zeigt nur.")
-    _add_von_bis(off_fest)
+    _add_von_bis(off_fest, required=False, schuljahr_default=True)
     _add_json(off_fest)
     off_fest.add_argument("--pause", dest="pause", type=float, default=1.0,
                           help="Sekunden zwischen PUTs (Standard 1.0)")
@@ -588,10 +598,11 @@ def main() -> int:
     off_pruefen = off_sub.add_parser(
         "pruefen", help="Absenzenprüfung für offene Perioden (Write)",
         description="Mit --datei: Perioden aus Datei ([{periodId}, ...]). "
-                    "Ohne: alle prüfbedürftigen Perioden in --von/--bis.")
+                    "Ohne: alle prüfbedürftigen Perioden im Zeitraum "
+                    "(Standard: Schuljahr-Start bis heute).")
     off_pruefen.add_argument("--datei", dest="datei", default=None,
                              help="JSON-Datei [{periodId}, ...] statt Zeitraum")
-    _add_von_bis(off_pruefen, required=False)
+    _add_von_bis(off_pruefen, required=False, schuljahr_default=True)
     off_pruefen.add_argument("--pause", dest="pause", type=float, default=1.0,
                              help="Sekunden zwischen Calls (Standard 1.0)")
     _add_school_year_arg(off_pruefen)

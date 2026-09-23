@@ -1,63 +1,44 @@
 # Project State
 
-Current status as of 2026-09-21 (Stundenplan-Serie, nach Domain-CLI).
+Current status as of 2026-09-21 (nach Man-Page + offen-Default).
 
 ## Current Focus
-Lesson-Enumeration aus dem Stundenplan umgestellt: `klasse faecher`,
-`student` und der Resolver arbeiten primär auf timetable/entries +
-calendar-entry/detail; Absenz-Writes (eintragen/entfernen) und
-`raum`-Stubs angebaut. Tests 65/65 grün. Live verifiziert (lesend +
-Testläufe).
+Bedienbarkeit und Standard-Workflow: autoritative Man-Page `man/wu.1`
+(Drift-Test) und `offen`-Schuljahr-Default (Schuljahr-Start..heute aus
+`open-periods/meta`). Tests 83/83 grün, Live verifiziert.
 
 ## Completed (this cycle)
-- [x] RE: Stundenplan-Endpunkte (entries/grid/filter/calendar,
-  calendar-entry/detail, rooms/form) + Absenz-Write-Workflow
-  (insert/delete/absenceRows/Dialog-CSRF) aus 2 CDP-Recordings
-- [x] Join verifiziert: `lesson.lessonId` == Matrix-lsId (WMC-Block
-  3BAIF); classregpage-ViewModel enthält lessonId + students
-  (absent/absenceId) + absenceRows
-- [x] Client: get_timetable_entries/get_calendar_entry_detail/
-  get_rooms_form + Parser (parse_timetable_entries,
-  group_timetable_lessons: Klasse/Fach/Primary-Lehrer) +
-  parse_dojo_viewmodel + set_absence/delete_absence/
-  get_classreg_viewmodel
-- [x] `student`: Plan-Join (belegt = eingeschrieben, klassenfremde
-  Lessons, 0 Matrix-Calls), `--absenzen` opt-in (nur eigene Lessons
-  via MY_TIMETABLE, da Matrix rechte-beschränkt)
-- [x] `klasse/faecher`: alle Lessons aus Klassen-Plan, `eigen` per
-  Slot-Match, Primary-Anzeige bei parallelen Gruppen, offen-Count
-- [x] Resolver: Plan→Match→Detail→lsId, eigene-Lesson-Bevorzugung bei
-  Mehrdeutigkeit, open-periods-Fallback
-- [x] `absenzen eintragen/entfernen` (Testlauf-Standard, Block-Default,
-  --kein-block nur mit --termin-id), `absenzen zeigen --termin-id`
-  (echte Absenz-Einträge)
-- [x] `raum suchen/groesse` Stubs (Exit 3)
-- [x] Doku: WEBUNTIS_API.md (Schablonen, anonymisiert), PITFALLS,
-  CONVENTIONS (Anonymisierungs-Regel, Doku-Schablonen-Regel),
-  DECISIONS, ARCHITECTURE
-- [x] Live: klasse 3BAIF faecher (18 Lessons, 3 parallele POS1-Gruppen,
-  eigen korrekt), student = POS1+WMC_1 (0 Matrix), --absenzen 2/2+2/2,
-  Resolver 3baif/pos1 -> eigene lsId, Absenz-Testläufe, raum rc=3
-- [x] `student --id <ID>` Direktzugriff per Schüler-ID (Alternative zum
-  Namen, `_suchen_per_id` über students/overview, nur aktuelles Roster —
-  kein Jahr-Fallback; genau eins aus NAME/--id, sonst Exit 2) (#19)
+- [x] Man-Page `man/wu.1` (groff, deutsch): alle Kommandos/Subs,
+  Optionen, Workflows, Exit-Codes (0/1/2/3), FILES/ENVIRONMENT,
+  Hinweise/Fallen, INTERNALS (verstecktes `intern`), fiktive Beispiele (#20)
+- [x] `tests/test_manpage.py`: Drift-Test (Inventar aus `cli*.py`,
+  groff-Render-Check) (#20)
+- [x] `AGENTS.md`-Abschnitt "CLI manual" (Agents lernen Pfad) +
+  `README.md`-Verweis (#20)
+- [x] `/open-periods`-Re-Record (20260921-231543) ausgewertet: UI-Route
+  ruft `POST classreg/open-periods`; neu `GET classreg/open-periods/meta`
+  (`allowedFilters`, `defaultFilter`, `schoolYear`-Range) (#21)
+- [x] `Client.get_open_periods_meta()` + `_resolve_von_bis()`:
+  `--von/--bis` bei allen `offen`-Befehlen optional, Default
+  Schuljahr-Start..heute (Ende gedeckelt), halb → Exit 2 (#21)
+- [x] `tests/test_offen_default.py` (5 Tests) (#21)
+- [x] Doku: WEBUNTIS_API.md (Meta-Template + UI-Quelle),
+  DECISIONS/CONVENTIONS/PITFALLS/HANDOFF (Brave-Rauschen ≠
+  Recorder-Fehler; Heute-Cap) (#21)
 
 ## Pending
-- Live-Absenz-Write-Verifikation (Setzen+Löschen am Testtermin,
-  netto null) — wartet auf Nutzer-Go.
+- Code-Review ab Fixpunkt (s. HANDOFF.md).
 
 ## Blockers
 - None.
 
 ## Notes
-- Parallele Gruppen desselben Fachs (POS1_3BAIF_1/2/3): Team-Teilung,
-  Schüler besuchen ggf. alle; E1x/E1y-Gruppenwahl nur eine — Join bildet
-  beides korrekt ab (Primary-Lehrer + Slot-Fakten).
-- MY_TIMETABLE/TEACHER-Plan anonymisiert eigene Lehrerposition →
-  eigen-Markierung per Slot-Match, NICHT per Lehrer.
-- Matrix rechte-beschränkt: fremde lsIds melden Internal server error
-  (wie unbekannte) — UnknownLessonError-Hinweis angepasst.
-- Resolver-Fenster heute−7/+13 bleibt nur als Fallback (Plan primär).
+- Man-Page deckt auch das versteckt `intern` ab (DECISIONS: Escape-Hatch).
+- `groff -man -Tutf8` warnungsfrei; `man --local-file man/wu.1` rendert.
+- offen-Zeitraum ohne Flags: ein Meta-Call zusätzlich; Meta-Ausfall ohne
+  expliziten Zeitraum wirft (kein Raten).
+- Brave-Debug-Meldungen (`OpenH264`, `puffin … Operation not permitted`)
+  sind Browser-Rauschen, kein Recorder-Fehler (PITFALLS).
 
 ## Next Session Suggestion
 - Code-Review ab Commit dieser Serie (Fixpunkt s. HANDOFF.md).
