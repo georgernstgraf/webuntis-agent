@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from webuntis_agent import cli_student
+from webuntis_cli import cli_student
 
 
 def _ov_student(sid=4711, klasse="5XZY"):
@@ -115,12 +115,12 @@ def test_cmd_student_id_without_class_no_detail(monkeypatch, capsys):
 
 
 def test_cmd_student_name_and_id_rejected(capsys):
-    from webuntis_agent.errors import UsageError
+    from webuntis_cli.errors import UsageError
     with pytest.raises(UsageError, match="genau eins"):
         cli_student.cmd_student(_args(name="Muster", student_id=4711))
 
 
 def test_cmd_student_neither_rejected(capsys):
-    from webuntis_agent.errors import UsageError
+    from webuntis_cli.errors import UsageError
     with pytest.raises(UsageError, match="genau eins"):
         cli_student.cmd_student(_args())

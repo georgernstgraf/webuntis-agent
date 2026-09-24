@@ -10,14 +10,14 @@ from datetime import date
 
 from typing import TYPE_CHECKING, NoReturn
 
-from webuntis_agent.errors import (
+from webuntis_cli.errors import (
     NotFoundError,
     ServerError,
     UsageError,
 )
 
 if TYPE_CHECKING:
-    from webuntis_agent.client import Client
+    from webuntis_cli.client import Client
 
 from dataclasses import dataclass
 
@@ -196,7 +196,7 @@ def _session_path() -> str:
 
 def _make_client(args: argparse.Namespace):
     _load_env()
-    from webuntis_agent.client import Client
+    from webuntis_cli.client import Client
     c = Client(
         host=os.environ.get("WEBUNTIS_HOST",
                             "https://spengergasse.webuntis.com"),
@@ -275,7 +275,7 @@ def _sleep_between(i: int, delay: float) -> None:
 
 def _fixed_text(subject: str) -> str | None:
     """Return a fixed text for subjects like SS/BESP that don't need git-log."""
-    from webuntis_agent.client import FIXED_TEXT_SUBJECTS
+    from webuntis_cli.client import FIXED_TEXT_SUBJECTS
     return FIXED_TEXT_SUBJECTS.get(subject)
 
 

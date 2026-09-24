@@ -2,7 +2,7 @@
 
 import sys
 
-from webuntis_agent import cli
+from webuntis_cli import cli
 
 
 def _run(monkeypatch, argv):

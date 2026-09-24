@@ -15,7 +15,7 @@ from datetime import date, timedelta as _timedelta
 
 from typing import TYPE_CHECKING
 
-from webuntis_agent.cli_common import (
+from webuntis_cli.cli_common import (
     _datum_arg,
     _find_klasse,
     _make_client,
@@ -26,13 +26,13 @@ from webuntis_agent.cli_common import (
     _split_klasse_fach,
     usage_error,
 )
-from webuntis_agent.errors import (
+from webuntis_cli.errors import (
     NotFoundError,
     ServerError,
 )
 
 if TYPE_CHECKING:
-    from webuntis_agent.client import Client
+    from webuntis_cli.client import Client
 
 
 def _teacher_names_for_class(c: Client, class_id: int,
@@ -125,7 +125,7 @@ def _fetch_class_plan(c: Client, class_id: int,
     werden bis zu 4 benachbarte Wochen (zurück, dann vor) probiert.
     Liefert (Entries via parse_timetable_entries, genutzte Woche).
     """
-    from webuntis_agent.client import parse_timetable_entries
+    from webuntis_cli.client import parse_timetable_entries
     last: tuple[str, str] | None = None
     for off in (0, -7, 7, -14):
         ws, we = _week_bounds(ref + _timedelta(days=off))
@@ -193,7 +193,7 @@ def _resolve_lesson_from_class_subject(
     Treffer RuntimeError mit Kandidaten.
     """
     from datetime import date as _date
-    from webuntis_agent.client import (
+    from webuntis_cli.client import (
         group_timetable_lessons,
         parse_timetable_entries,
     )
@@ -876,8 +876,8 @@ def cmd_lehrstoff_aus_git(args: argparse.Namespace) -> int:
     Mit --ausfuehren: --termin-id und --thema-id nötig, Text wird
     eingetragen.
     """
-    from webuntis_agent.client import repos_for_subject
-    from webuntis_agent.gitlog import (
+    from webuntis_cli.client import repos_for_subject
+    from webuntis_cli.gitlog import (
         get_commit_diff_by_name,
         get_commits_for_class,
         format_commits,
@@ -887,7 +887,7 @@ def cmd_lehrstoff_aus_git(args: argparse.Namespace) -> int:
     if not repos:
         print(
             f"WARNUNG: Fach '{fach}' nicht in SUBJECT_REPO_MAP — "
-            "in src/webuntis_agent/client.py ergänzen",
+            "in src/webuntis_cli/client.py ergänzen",
             file=sys.stderr,
         )
         return 3
@@ -1022,7 +1022,7 @@ def _resolve_schueler(c: Client, args: argparse.Namespace) -> dict:
     Kein Matrix-Call. Fehlt die Angabe → UsageError; nicht gefunden/
     mehrdeutig → NotFoundError bzw. UsageError (Kandidaten nach stderr).
     """
-    from webuntis_agent.client import (
+    from webuntis_cli.client import (
         student_matches_overview,
         tokenize_search_query,
     )

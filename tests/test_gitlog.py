@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from webuntis_agent.gitlog import (
+from webuntis_cli.gitlog import (
     CommitInfo,
     _advance_year,
     _is_abteilungsklasse,

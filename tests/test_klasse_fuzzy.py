@@ -2,8 +2,8 @@
 
 import pytest
 
-from webuntis_agent.cli_common import _find_klasse
-from webuntis_agent.errors import NotFoundError
+from webuntis_cli.cli_common import _find_klasse
+from webuntis_cli.errors import NotFoundError
 
 
 class _Fake:

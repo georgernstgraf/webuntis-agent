@@ -4,8 +4,8 @@ import argparse
 
 import pytest
 
-from webuntis_agent import cli_raum
-from webuntis_agent.errors import NotImplementedYet
+from webuntis_cli import cli_raum
+from webuntis_cli.errors import NotImplementedYet
 
 
 def test_raum_suchen_stub_exit7():

@@ -1,4 +1,4 @@
-"""CLI-Einstieg für webuntis-agent (Domain-CLI, s. DECISIONS.md).
+"""CLI-Einstieg für webuntis-cli (Domain-CLI, s. DECISIONS.md).
 
 Top-Level: klasse, lesson, student, lehrer, offen, intern.
 Eine Lesson wird immer als KLASSE/FACH adressiert (z.B. 3AHWII/SWP1x).
@@ -10,34 +10,34 @@ import argparse
 import sys
 import traceback
 
-from webuntis_agent.cli_intern import (
+from webuntis_cli.cli_intern import (
     cmd_login,
     cmd_logout,
     cmd_rest,
     cmd_rpc,
     cmd_session_status,
 )
-from webuntis_agent.cli_klasse import (
+from webuntis_cli.cli_klasse import (
     cmd_klasse,
     cmd_klasse_faecher,
     cmd_klasse_kv,
     cmd_klasse_roster,
 )
-from webuntis_agent.cli_common import (
+from webuntis_cli.cli_common import (
     _add_school_year_arg,
     _date_arg,
     _datum_arg,
     _HelpfulParser,
     _print_help_and_error,
 )
-from webuntis_agent.errors import (
+from webuntis_cli.errors import (
     ConfigError,
     UnexpectedError,
     UsageError,
     WuError,
     classify_exit,
 )
-from webuntis_agent.cli_lesson import (
+from webuntis_cli.cli_lesson import (
     cmd_absenzen_eintragen,
     cmd_absenzen_entfernen,
     cmd_absenzen_pruefen,
@@ -52,7 +52,7 @@ from webuntis_agent.cli_lesson import (
     cmd_lesson_roster,
     cmd_lesson_termine,
 )
-from webuntis_agent.cli_offen import (
+from webuntis_cli.cli_offen import (
     cmd_offen_eintragen,
     cmd_offen_festtexte,
     cmd_offen_liste,
@@ -61,9 +61,9 @@ from webuntis_agent.cli_offen import (
     cmd_offen_verifizieren,
     cmd_offen_vorschlag,
 )
-from webuntis_agent.cli_lehrer import cmd_lehrer
-from webuntis_agent.cli_raum import cmd_raum_groesse, cmd_raum_suchen
-from webuntis_agent.cli_student import cmd_student
+from webuntis_cli.cli_lehrer import cmd_lehrer
+from webuntis_cli.cli_raum import cmd_raum_groesse, cmd_raum_suchen
+from webuntis_cli.cli_student import cmd_student
 
 
 def _add_testlauf(sp):
@@ -157,7 +157,7 @@ def _attach_parsers(parser: argparse.ArgumentParser) -> None:
 def main() -> int:
     p = _HelpfulParser(
         prog="wu",
-        description="WebUntis-Agent: Klassenbuch-Arbeit vom Terminal aus — "
+        description="WebUntis-CLI: Klassenbuch-Arbeit vom Terminal aus — "
                     "Roster, Lehrstoff und Absenzen für den eigenen Unterricht.\n\n"
                     "Domain-Objekte: KLASSE (z.B. 3AHWII), LESSON als "
                     "KLASSE/FACH (z.B. 3AHWII/SWP1x), STUDENT und LEHRER "
@@ -757,7 +757,7 @@ def main() -> int:
         if getattr(args, "cmd", None) == "lesson":
             args.klasse_fach = adresse
         if args.cmd == "intern" and args.sub == "record":
-            from webuntis_agent.recorder import main as rec_main
+            from webuntis_cli.recorder import main as rec_main
             return rec_main([f"--host={args.host}", f"--port={args.port}",
                              f"--domain={args.domain}"])
         if hasattr(args, "func"):

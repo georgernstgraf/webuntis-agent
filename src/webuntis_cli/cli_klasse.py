@@ -12,16 +12,16 @@ import sys
 
 from typing import TYPE_CHECKING
 
-from webuntis_agent.cli_common import (
+from webuntis_cli.cli_common import (
     _find_klasse,
     _make_client,
     _open_period_entries,
 )
-from webuntis_agent.cli_lesson import _teacher_names_for_class
-from webuntis_agent.errors import NotFoundError, ServerError
+from webuntis_cli.cli_lesson import _teacher_names_for_class
+from webuntis_cli.errors import NotFoundError, ServerError
 
 if TYPE_CHECKING:
-    from webuntis_agent.client import Client
+    from webuntis_cli.client import Client
 
 
 def _kv_info(c: Client, sy: int, needle: int | str) -> dict:
@@ -29,7 +29,7 @@ def _kv_info(c: Client, sy: int, needle: int | str) -> dict:
 
     Wirft RuntimeError, wenn die Klasse nicht gefunden wird.
     """
-    from webuntis_agent.cli_common import _find_klasse
+    from webuntis_cli.cli_common import _find_klasse
     hit = _find_klasse(c, sy, needle)
     teacher_ids = [v for key in ("teacher1", "teacher2", "teacher3")
                    if (v := hit.get(key))]
@@ -70,8 +70,8 @@ def _faecher_groups(c: Client, sy: int, klassenname: str,
     `lesson K/F`-Resolver per calendar-entry/detail).
     """
     from datetime import date as _date, timedelta as _td
-    from webuntis_agent.cli_lesson import _week_bounds
-    from webuntis_agent.client import (
+    from webuntis_cli.cli_lesson import _week_bounds
+    from webuntis_cli.client import (
         group_timetable_lessons,
         parse_timetable_entries,
     )
@@ -243,7 +243,7 @@ def _klassen_roster(c: Client, klassenname: str) -> list[tuple[str, str]]:
 
 def cmd_klasse_roster(args: argparse.Namespace) -> int:
     """Schülerliste (Roster) einer Klasse, Excel-einfügbare TSV-Ausgabe."""
-    from webuntis_agent.cli_lesson import _tsv_cell
+    from webuntis_cli.cli_lesson import _tsv_cell
     c = _make_client(args)
     rows = _klassen_roster(c, args.klassenname)
     if args.json:

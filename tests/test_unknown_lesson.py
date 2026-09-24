@@ -5,9 +5,9 @@ No network, fictitious ids only.
 
 import sys
 
-from webuntis_agent import cli as cli_module
-from webuntis_agent import cli_lesson
-from webuntis_agent.client import Client, UnknownLessonError
+from webuntis_cli import cli as cli_module
+from webuntis_cli import cli_lesson
+from webuntis_cli.client import Client, UnknownLessonError
 
 _SERVER_SIG = ("JSON-RPC getStudentLessonPeriodMatrix failed (code 0): "
                "Internal server error.")

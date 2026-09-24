@@ -1,18 +1,18 @@
 ---
 name: fill-open-periods
-description: Fill missing WebUntis lesson topics (Lehrstoff) for open periods using GRG-* git history and the webuntis-agent CLI. Use when the user wants to catch up on missing Lehrstoff entries.
+description: Fill missing WebUntis lesson topics (Lehrstoff) for open periods using GRG-* git history and the webuntis-cli CLI. Use when the user wants to catch up on missing Lehrstoff entries.
 ---
 
 # fill-open-periods
 
 Automate the "Lehrstoff nachtragen" chore: list WebUntis open periods,
 derive a topic text from the corresponding GRG-* teaching repository's
-git history, and submit each via the webuntis-agent CLI.
+git history, and submit each via the webuntis-cli CLI.
 
 ## Prerequisites
 
-- The `webuntis-agent` repo is checked out at
-  `~/repos/georgernstgraf/webuntis-agent` with a working `.venv`.
+- The `webuntis-cli` repo is checked out at
+  `~/repos/georgernstgraf/webuntis-cli` with a working `.venv`.
 - `.env` is present with `WEBUNTIS_USER` / `WEBUNTIS_PASSWORD` (see
   `.env.example`).
 - All GRG-* repos under `~/repos/georgernstgraf/` are pullable.
@@ -23,8 +23,8 @@ git history, and submit each via the webuntis-agent CLI.
    pre-load git commits + diffs in one call:
 
    ```bash
-   cd ~/repos/georgernstgraf/webuntis-agent
-   .venv/bin/python -m webuntis_agent.cli offen vorschlag \
+   cd ~/repos/georgernstgraf/webuntis-cli
+   .venv/bin/python -m webuntis_cli.cli offen vorschlag \
        --von 2025-09-01 --bis 2026-07-05
    ```
 
@@ -91,7 +91,7 @@ git history, and submit each via the webuntis-agent CLI.
 5. **Submit** all entries:
 
    ```bash
-   .venv/bin/python -m webuntis_agent.cli offen eintragen \
+   .venv/bin/python -m webuntis_cli.cli offen eintragen \
        --datei /tmp/opencode/batch_<timestamp>.json --pause 1.0 --ausfuehren
    ```
 
@@ -105,7 +105,7 @@ git history, and submit each via the webuntis-agent CLI.
 6. **Check absences** for all remaining open periods:
 
    ```bash
-   .venv/bin/python -m webuntis_agent.cli offen pruefen \
+   .venv/bin/python -m webuntis_cli.cli offen pruefen \
        --von 2025-09-01 --bis 2026-07-05 --pause 1.5 --ausfuehren
    ```
 

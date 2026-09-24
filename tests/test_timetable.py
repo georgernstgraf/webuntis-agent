@@ -3,7 +3,7 @@
 No network, fictitious data only (anonymized — no real ids/names).
 """
 
-from webuntis_agent.client import (
+from webuntis_cli.client import (
     group_timetable_lessons,
     parse_dojo_viewmodel,
     parse_timetable_entries,

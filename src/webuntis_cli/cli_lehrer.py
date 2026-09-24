@@ -14,7 +14,7 @@ import argparse
 import json
 import sys
 
-from webuntis_agent.cli_common import (
+from webuntis_cli.cli_common import (
     _annotate_search_hits,
     _format_search_hit,
     _make_client,

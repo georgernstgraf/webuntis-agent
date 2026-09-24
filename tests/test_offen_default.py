@@ -7,7 +7,7 @@ import argparse
 
 import pytest
 
-from webuntis_agent import cli_common
+from webuntis_cli import cli_common
 
 
 class _MetaFakeClient:
@@ -49,7 +49,7 @@ def test_ende_wird_gedeckelt():
 
 
 def test_halb_angegeben_ist_usage_fehler(capsys):
-    from webuntis_agent.errors import UsageError
+    from webuntis_cli.errors import UsageError
     c = _MetaFakeClient(_meta())
     args = argparse.Namespace(start="2026-09-01", end=None)
     with pytest.raises(UsageError) as exc:

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import argparse
 
-from webuntis_agent.errors import NotImplementedYet
+from webuntis_cli.errors import NotImplementedYet
 
 _NOT_IMPLEMENTED = (
     "noch nicht implementiert — Endpunkte sind dokumentiert "

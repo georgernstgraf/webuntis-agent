@@ -5,8 +5,8 @@ import argparse
 import httpx
 import pytest
 
-from webuntis_agent.cli_common import _HelpfulParser, usage_error
-from webuntis_agent.errors import (
+from webuntis_cli.cli_common import _HelpfulParser, usage_error
+from webuntis_cli.errors import (
     AuthError,
     ConfigError,
     NetworkError,

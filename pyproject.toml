@@ -1,5 +1,5 @@
 [project]
-name = "webuntis-agent"
+name = "webuntis-cli"
 version = "0.1.0"
 description = "Reverse-engineering WebUntis API to automate Lehrstoff entry"
 requires-python = ">=3.11"
@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.scripts]
-webuntis-agent = "webuntis_agent.cli:main"
+webuntis-cli = "webuntis_cli.cli:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

@@ -3,7 +3,7 @@
 import argparse
 import json
 
-from webuntis_agent import cli_lehrer
+from webuntis_cli import cli_lehrer
 
 
 def _hit(id_=9001, short="MK", display="Muster, Klaus"):

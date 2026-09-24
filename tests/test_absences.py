@@ -8,7 +8,7 @@ import argparse
 import json
 import time
 
-from webuntis_agent import cli_offen
+from webuntis_cli import cli_offen
 
 
 class _FakeClient:

@@ -18,7 +18,7 @@ from typing import Any
 
 import httpx
 
-from webuntis_agent.errors import (
+from webuntis_cli.errors import (
     AuthError,
     ConfigError,
     NetworkError,
@@ -827,7 +827,7 @@ class Client:
     # ----- JSON-RPC (read-only, public) --------------------------------
 
     def rpc(self, method: str, params: dict[str, Any] | None = None,
-            id_: str = "webuntis-agent") -> dict[str, Any]:
+            id_: str = "webuntis-cli") -> dict[str, Any]:
         r = _request_with_retry(
             self.http, "POST",
             f"{self.host}/WebUntis/jsonrpc.do",

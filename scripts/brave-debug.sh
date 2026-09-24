@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start Brave with the Chrome DevTools Protocol remote debugging port so
-# that webuntis-agent.recorder can attach to it.
+# that webuntis-cli.recorder can attach to it.
 #
 # Uses the existing Default profile so all cookies/logins are available.
 # If Brave is already running, this will fail (port in use); close all

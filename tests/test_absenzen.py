@@ -8,8 +8,8 @@ import json
 
 import pytest
 
-from webuntis_agent import cli_lesson
-from webuntis_agent.client import (
+from webuntis_cli import cli_lesson
+from webuntis_cli.client import (
     Client,
     _untis_date_to_iso,
     _untis_time_to_hhmm,
@@ -230,7 +230,7 @@ def test_cmd_absenzen_entfernen_by_student_lookup(monkeypatch, capsys):
 
 
 def test_cmd_absenzen_entfernen_no_absence_found(monkeypatch, capsys):
-    from webuntis_agent.errors import NotFoundError
+    from webuntis_cli.errors import NotFoundError
     fake = _AbsFakeClient()  # vm ohne absenceRows
     monkeypatch.setattr(cli_lesson, "_make_client", lambda args: fake)
     args = _abs_args(termin=608000, schueler_name="Erika Muster",

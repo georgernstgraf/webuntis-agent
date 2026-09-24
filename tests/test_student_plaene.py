@@ -3,7 +3,7 @@
 No network, fictitious data only (anonymized — no real ids/names).
 """
 
-from webuntis_agent import cli_student
+from webuntis_cli import cli_student
 
 
 def _cur(typ, short, long_=None):

@@ -3,7 +3,7 @@
 import argparse
 import json
 
-from webuntis_agent import cli_lesson, cli_offen
+from webuntis_cli import cli_lesson, cli_offen
 
 
 class _WriteFake:

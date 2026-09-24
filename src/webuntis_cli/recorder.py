@@ -3,7 +3,7 @@ Protocol and capture Network + Runtime (console) events for the WebUntis
 domain into structured JSONL files under recordings/.
 
 Usage:
-    python -m webuntis_agent.recorder [--host localhost] [--port 9222] \\
+    python -m webuntis_cli.recorder [--host localhost] [--port 9222] \\
         [--domain spengergasse.webuntis.com]
 
 Prerequisites:

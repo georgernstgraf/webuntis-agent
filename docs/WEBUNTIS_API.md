@@ -2,7 +2,7 @@
 
 Endpoints discovered or confirmed via CDP-Recorder for
 `https://spengergasse.webuntis.com/`. This document is the authoritative
-reference for the `webuntis-agent` client; each endpoint is grouped by
+reference for the `webuntis-cli` client; each endpoint is grouped by
 purpose and maps to a CLI command where applicable.
 
 ## Base configuration
@@ -35,7 +35,7 @@ purpose and maps to a CLI command where applicable.
   login lockout): parallel logins appear to invalidate earlier
   sessions — a second login seems to kill the first JSESSIONID.
   Treat sessions as single-active; avoid logging in twice concurrently.
-- CLI: implicit (called by `webuntis-agent` before any other command)
+- CLI: implicit (called by `webuntis-cli` before any other command)
 
 ### getJwtToken
 
@@ -330,7 +330,7 @@ obtainable within seconds from any live CLI call (`--json` outputs,
 The `aus-git` command and the `fill-open-periods` skill resolve which
 GRG-* repositories to scan based on the WebUntis subject short name
 (`period.subject.el.nameShort`). The mapping lives in
-`src/webuntis_agent/client.py` as `SUBJECT_REPO_MAP` and is meant to be
+`src/webuntis_cli/client.py` as `SUBJECT_REPO_MAP` and is meant to be
 extended as new subjects appear.
 
 | WebUntis subject | Candidate GRG repos |

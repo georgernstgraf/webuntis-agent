@@ -1,4 +1,4 @@
-# webuntis-agent
+# webuntis-cli
 
 Automate the **Lehrstoff eintragen** (lesson topic entry) and **Absenzen
 prüfen** (absence check) chores in [WebUntis] by reverse-engineering the
@@ -52,7 +52,7 @@ README entries — no manual typing required.
 ### Install
 
 ```bash
-cd ~/repos/georgernstgraf/webuntis-agent
+cd ~/repos/georgernstgraf/webuntis-cli
 python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
@@ -73,7 +73,7 @@ cp .env.example .env
 ## Verwendung
 
 Kurzbefehl: `./wu …` — z.B. `./wu student "Erika Muster"`.
-Er setzt `PYTHONPATH=src` und reicht an `webuntis_agent.cli` durch.
+Er setzt `PYTHONPATH=src` und reicht an `webuntis_cli.cli` durch.
 
 Domain-Objekte: **Klasse** (`wu klasse 3AHWII`), **Lesson** als
 `KLASSE/FACH` (`wu lesson 3AHWII/SWP1x`), **Student**
@@ -281,7 +281,7 @@ Jede Fehlerklasse hat einen eigenen Exit-Code (Details: `man/wu.1`):
 3. Start the recorder:
 
    ```bash
-   .venv/bin/python -m webuntis_agent.recorder
+   .venv/bin/python -m webuntis_cli.recorder
    ```
 
 4. Perform the action you want to capture (e.g. enter a lesson topic, check
@@ -346,15 +346,15 @@ prefix matching (so `SWP1x`, `SWP1y`, `SWP1` all match `SWP`):
 | `BESP` | _(fixed text: "Bewegung und Sport")_ |
 
 Unknown subjects trigger a warning so the mapping can be extended. See
-`SUBJECT_REPO_MAP` in [`src/webuntis_agent/client.py`](src/webuntis_agent/client.py).
+`SUBJECT_REPO_MAP` in [`src/webuntis_cli/client.py`](src/webuntis_cli/client.py).
 
 ---
 
 ## Project Layout
 
 ```
-webuntis-agent/
-├── src/webuntis_agent/
+webuntis-cli/
+├── src/webuntis_cli/
 │   ├── recorder.py       # CDP-Recorder: Network + Runtime → recordings/
 │   ├── client.py         # WebUntis API client (login, JWT, REST, absences)
 │   ├── gitlog.py         # GRG-* git-log analysis (split classes, diffs)

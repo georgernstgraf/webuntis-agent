@@ -49,7 +49,7 @@ Follow these without question. Do not deviate unless explicitly told.
 - Recording files: `{timestamp}_{domain_with_underscores}_{type}.jsonl`
 
 ## File Layout
-- `src/webuntis_agent/` — Python-Paket: recorder, client, gitlog,
+- `src/webuntis_cli/` — Python-Paket: recorder, client, gitlog,
   errors, cli (Verdrahtung) + cli_common (Infra), cli_klasse,
   cli_lesson, cli_student, cli_lehrer, cli_offen, cli_raum, cli_intern
 - `scripts/` — shell scripts (brave-debug.sh, pre-push) and helper scripts (show-cookies.py)

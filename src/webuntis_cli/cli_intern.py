@@ -11,11 +11,11 @@ import argparse
 import json
 import sys
 
-from webuntis_agent.cli_common import (
+from webuntis_cli.cli_common import (
     _make_client,
     _session_path,
 )
-from webuntis_agent.errors import AuthError
+from webuntis_cli.errors import AuthError
 
 
 def cmd_login(args: argparse.Namespace) -> int:

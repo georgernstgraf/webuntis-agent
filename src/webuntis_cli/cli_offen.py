@@ -12,7 +12,7 @@ import sys
 from collections import Counter, defaultdict
 from datetime import date
 
-from webuntis_agent.cli_common import (
+from webuntis_cli.cli_common import (
     _fetch_open_periods,
     _make_client,
     _no_open_periods,
@@ -127,8 +127,8 @@ def cmd_offen_vorschlag(args: argparse.Namespace) -> int:
     proposedText) und `skipped` (Fächer ohne Repo-Mapping). Texte prüfen,
     bestätigen, dann `offen eintragen --datei <json>` ausführen.
     """
-    from webuntis_agent.client import repos_for_subject, FIXED_TEXT_SUBJECTS
-    from webuntis_agent.gitlog import (
+    from webuntis_cli.client import repos_for_subject, FIXED_TEXT_SUBJECTS
+    from webuntis_cli.gitlog import (
         get_commit_diff_by_name,
         get_commits_for_class,
     )
@@ -191,7 +191,7 @@ def cmd_offen_vorschlag(args: argparse.Namespace) -> int:
             entry["commits"] = []
             entry["warning"] = (
                 f"Fach '{subj}' nicht in SUBJECT_REPO_MAP — "
-                "in src/webuntis_agent/client.py ergänzen"
+                "in src/webuntis_cli/client.py ergänzen"
             )
             skipped.append(entry)
             continue
@@ -264,7 +264,7 @@ def cmd_offen_festtexte(args: argparse.Namespace) -> int:
 
     --testlauf (Standard) zeigt nur, --ausfuehren trägt wirklich ein.
     """
-    from webuntis_agent.client import FIXED_TEXT_SUBJECTS
+    from webuntis_cli.client import FIXED_TEXT_SUBJECTS
     c, sy, periods = _fetch_open_periods(args)
     if not periods:
         return _no_open_periods(args)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Kurzbefehl für die webuntis-agent-CLI — symlink- und venv-fähig.
+# Kurzbefehl für die webuntis-cli-CLI — symlink- und venv-fähig.
 #
 # Aufruf (auch über Symlinks, z. B. in ~/svn/.../Toolset):
 #   wu student "Erika Muster"
@@ -41,4 +41,4 @@ EOF
 fi
 
 export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
-exec "$PYTHON_BIN" -m webuntis_agent.cli "$@"
+exec "$PYTHON_BIN" -m webuntis_cli.cli "$@"

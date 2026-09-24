@@ -5,14 +5,14 @@ offen-Default). Overwritten when structural changes occur during a session.
 
 ## Overview
 
-webuntis-agent is a Python CLI tool that reverse-engineers and automates
+webuntis-cli is a Python CLI tool that reverse-engineers and automates
 the WebUntis "Lehrstoff eintragen" (lesson topic entry) action. It
 consists of a CDP recorder for endpoint discovery, an HTTP client for
 API replay, a git-log analyzer for deriving topic text from GRG-*
 teaching repos, and an opencode skill that orchestrates the full
 fill-open-periods workflow with human confirmation.
 
-## Components (`src/webuntis_agent/`)
+## Components (`src/webuntis_cli/`)
 
 | Module | Purpose |
 |--------|---------|

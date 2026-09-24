@@ -6,7 +6,7 @@ import os
 import httpx
 import pytest
 
-from webuntis_agent.client import Client, Session
+from webuntis_cli.client import Client, Session
 
 
 def _make_client(tmp_path, handler, session_path="s.json") -> Client:
@@ -124,7 +124,7 @@ def test_relogin_retry_uses_fresh_headers(tmp_path, monkeypatch):
             return httpx.Response(401, request=request)
         return httpx.Response(
             200, request=request,
-            json={"jsonrpc": "2.0", "id": "webuntis-agent",
+            json={"jsonrpc": "2.0", "id": "webuntis-cli",
                   "result": [{"id": 1, "name": "SB"}]})
 
     c = _make_client(tmp_path, handler)
@@ -151,7 +151,7 @@ def test_no_relogin_loop_on_permanent_401(tmp_path, monkeypatch):
         calls["n"] += 1
         return httpx.Response(401, request=request)
 
-    from webuntis_agent.errors import AuthError
+    from webuntis_cli.errors import AuthError
     c = _make_client(tmp_path, handler)
     c._session = Session("STALE", "_sch", c.school, c.host)
     with pytest.raises(AuthError):

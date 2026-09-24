@@ -1,4 +1,4 @@
-# webuntis-agent
+# webuntis-cli
 
 Reverse-engineering the WebUntis web API (as used by the WebUntis UI at
 `https://spengergasse.webuntis.com/`) to automate the "Lehrstoff eintragen"
@@ -60,7 +60,7 @@ Output goes to `recordings/{timestamp}_network.jsonl` and
 1. Start Brave with the debug port:
    `scripts/brave-debug.sh`
 2. In Brave, open `https://spengergasse.webuntis.com/` and log in.
-3. Start the recorder: `python -m webuntis_agent.recorder`
+3. Start the recorder: `python -m webuntis_cli.recorder`
 4. Perform the "Lehrstoff eintragen" action in the WebUntis UI as usual.
 5. Stop the recorder (Ctrl-C). Inspect `recordings/`.
 

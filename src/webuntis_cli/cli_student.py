@@ -14,14 +14,14 @@ import argparse
 import json
 import sys
 
-from webuntis_agent.cli_common import (
+from webuntis_cli.cli_common import (
     _find_klasse,
     _make_client,
     _sleep_between,
     usage_error,
 )
-from webuntis_agent.cli_klasse import _kv_info
-from webuntis_agent.errors import ServerError
+from webuntis_cli.cli_klasse import _kv_info
+from webuntis_cli.errors import ServerError
 
 
 def _suchen(c, sy: int, query: str, fallback: bool, alle_jahre: bool,
@@ -31,7 +31,7 @@ def _suchen(c, sy: int, query: str, fallback: bool, alle_jahre: bool,
     Liefert (Treffer, aktuelle_id, durchsuchte_jahre). Treffer aus älteren
     Jahren tragen `current: False` (NICHT AKTUELL).
     """
-    from webuntis_agent.client import (
+    from webuntis_cli.client import (
         student_matches_overview,
         tokenize_search_query,
     )
@@ -121,8 +121,8 @@ def _faecher_aus_plaenen(c, sy: int, student_id: int,
     Kein Matrix-Call, keine lsId nötig.
     """
     from datetime import date as _date
-    from webuntis_agent.cli_lesson import _fetch_class_plan
-    from webuntis_agent.client import (
+    from webuntis_cli.cli_lesson import _fetch_class_plan
+    from webuntis_cli.client import (
         group_timetable_lessons,
         parse_timetable_entries,
     )
@@ -205,13 +205,13 @@ def _absenzen_eigene_lessons(c, sy: int, student_id: int,
     nicht geprüft (deren Absenzenkontrolle obliegt deren Lehrer).
     """
     from datetime import date as _date
-    from webuntis_agent.cli_lesson import (
+    from webuntis_cli.cli_lesson import (
         _entry_dt,
         _fetch_class_plan,
         _lsid_from_detail,
         _week_bounds,
     )
-    from webuntis_agent.client import (
+    from webuntis_cli.client import (
         group_timetable_lessons,
         parse_timetable_entries,
     )

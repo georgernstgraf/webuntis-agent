@@ -5,7 +5,7 @@ from datetime import date
 
 import pytest
 
-from webuntis_agent import cli_lesson
+from webuntis_cli import cli_lesson
 
 
 def _matrix():
@@ -149,7 +149,7 @@ def test_cmd_roster_fallback_last_held(monkeypatch, capsys):
 
 
 def test_cmd_roster_no_units_at_all(monkeypatch, capsys):
-    from webuntis_agent.errors import NotFoundError
+    from webuntis_cli.errors import NotFoundError
     m = _matrix()
     m["lessonPeriods"] = []
     monkeypatch.setattr(cli_lesson, "_make_client",

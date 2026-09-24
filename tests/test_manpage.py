@@ -1,7 +1,7 @@
 """Man page drift test: man/wu.1 must document the full CLI surface.
 
 No network, no live data. The test derives the command/option inventory
-straight from the argparse wiring in src/webuntis_agent/cli*.py
+straight from the argparse wiring in src/webuntis_cli/cli*.py
 (every add_parser/add_argument literal) and asserts each appears in
 man/wu.1. Adding a command or flag without documenting it fails the
 suite. A groff render check (skipped when groff is missing) guards the
@@ -15,7 +15,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 MAN = REPO / "man" / "wu.1"
-SRC = REPO / "src" / "webuntis_agent"
+SRC = REPO / "src" / "webuntis_cli"
 
 
 def _cli_sources() -> str:

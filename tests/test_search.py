@@ -1,6 +1,6 @@
 """Pure search-fallback helpers (no network)."""
 
-from webuntis_agent.client import (
+from webuntis_cli.client import (
     is_shortname_hint,
     merge_search_results,
     student_matches_overview,
