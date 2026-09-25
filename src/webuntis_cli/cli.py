@@ -167,7 +167,8 @@ def main() -> int:
         epilog="Beispiele:\n"
                "  wu klasse 3AHWII               Übersicht: KV, Fächer, Roster\n"
                "  wu lesson 3AHWII/SWP1x         Roster des nächsten Termins\n"
-               "  wu student \"Erika Muster\"       alles zu einer Schülerin\n"
+               "  wu student \"Erika Muster\"       Treffer zu einer Schülerin\n"
+               "  wu student --id 4711 --details  Details (KV, Fächer, Absenzen)\n"
                "  wu lehrer MK                   Steckbrief + KV-Klassen\n"
                "  wu offen status --von 2026-09-01 --bis 2026-09-30",
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -515,19 +516,20 @@ def main() -> int:
 
     # -- student --
     stu = sub.add_parser(
-        "student", help="Schüler: Treffer, Klasse, KV, Fächer, Absenzen",
-        description="Alles zu einem Schüler: Suche (tokenisierend, mit "
-                    "Fallback in ältere Schuljahre), Klasse, Klassenvorstand "
-                    "und belegte/nicht belegte Lessons aus dem "
-                    "Schüler-Stundenplan (Anwesenheit egal — belegt = "
-                    "eingeschrieben). Absenzen nur mit --absenzen (dann "
-                    "Matrix-Scans der eigenen Lessons). Treffer aus "
-                    "älteren Jahren sind NICHT AKTUELL markiert. Mit --id "
-                    "direkter Zugriff per Schüler-ID statt Namenssuche "
-                    "(nur aktuelles Roster).",
+        "student", help="Schüler: Treffer suchen (Details mit --details)",
+        description="Schüler-Suche (tokenisierend, mit Fallback in ältere "
+                    "Schuljahre). Standardmäßig NUR die Trefferliste "
+                    "(schnell, keine Detail-Calls). Mit --details zusätzlich "
+                    "Klasse, Klassenvorstand und belegte/nicht belegte "
+                    "Lessons aus dem Schüler-Stundenplan (Anwesenheit egal — "
+                    "belegt = eingeschrieben); mit --absenzen (impliziert "
+                    "--details) zusätzlich Matrix-Scans der eigenen Lessons. "
+                    "Treffer aus älteren Jahren sind NICHT AKTUELL markiert. "
+                    "Mit --id direkter Zugriff per Schüler-ID statt "
+                    "Namenssuche (nur aktuelles Roster).",
         epilog="Beispiele:\n"
                "  wu student \"Erika Muster\"\n"
-               "  wu student --id 4711\n"
+               "  wu student --id 4711 --details\n"
                "  wu student Muster --klasse 5BAIF --absenzen --json",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     stu.add_argument("name", nargs="?", default=None,
@@ -542,9 +544,12 @@ def main() -> int:
     stu.add_argument("--alle-jahre", dest="alle_jahre", action="store_true",
                      help="zusätzlich ältere Schuljahre durchsuchen "
                           "(NICHT AKTUELL markiert)")
+    stu.add_argument("--details", dest="details", action="store_true",
+                     help="Detailblock je Treffer zeigen (KV, Fächer, ggf. "
+                          "Absenzen); Default ist nur die Trefferliste")
     stu.add_argument("--absenzen", dest="absenzen", action="store_true",
-                     help="zusätzlich Absenzen der EIGENEN Lessons der "
-                          "Klasse anzeigen (je Lesson Matrix-Call, "
+                     help="Absenzen der EIGENEN Lessons der Klasse anzeigen "
+                          "(impliziert --details; je Lesson Matrix-Call, "
                           "gedrosselt)")
     stu.add_argument("--pause", dest="pause", type=float, default=1.0,
                      help="Sekunden zwischen Matrix-Calls (Standard 1.0, "

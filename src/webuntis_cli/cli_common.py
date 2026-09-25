@@ -76,9 +76,11 @@ class PeriodFields:
 
     @classmethod
     def from_raw(cls, per: dict, topic_id: int | None) -> "PeriodFields":
-        cls_el = per.get("classes", [{}])[0].get("el", {})
-        subj_el = per.get("subject", {}).get("el", {})
-        dt = per.get("dtRange", {})
+        classes = per.get("classes") or []
+        first_cls = (classes[0] or {}) if classes else {}
+        cls_el = first_cls.get("el") or {}
+        subj_el = (per.get("subject") or {}).get("el") or {}
+        dt = per.get("dtRange") or {}
         return cls(
             period_id=per.get("id"),
             topic_id=topic_id,
@@ -242,8 +244,8 @@ def _klasse_kandidaten(c: Client, sy: int, query: str) -> list[str]:
     except Exception:
         return []
     names = {
-        (h.get("resource", {}).get("shortName")
-         or h.get("resource", {}).get("longName") or "")
+        ((h.get("resource") or {}).get("shortName")
+         or (h.get("resource") or {}).get("longName") or "")
         for h in hits if h.get("type") == "CLASS"
     }
     return sorted(n for n in names if n)
@@ -343,17 +345,19 @@ def _open_period_entries(c: Client, sy: int, start: str, end: str,
     Shared by `offen liste`, `klasse faecher` and the lsId resolver.
     """
     data = c.get_open_periods(start, end, filter_=filter_, school_year_id=sy)
-    raw = data.get("periods", [])
+    raw = data.get("periods") or []
     entries: list[dict] = []
     blocks: dict[int | None, list[dict]] = {}
     for p in raw:
-        per = p.get("period", {})
-        dt = per.get("dtRange", {})
-        teachers = [t["el"] for t in per.get("teachers", []) if t.get("el")]
+        p = p or {}
+        per = p.get("period") or {}
+        dt = per.get("dtRange") or {}
+        teachers = [t["el"] for t in (per.get("teachers") or [])
+                    if t and t.get("el")]
         rooms = []
-        for r in per.get("rooms", []):
-            el = r.get("el") or {}
-            org = (r.get("orgEl") or {}).get("name")
+        for r in per.get("rooms") or []:
+            el = (r or {}).get("el") or {}
+            org = ((r or {}).get("orgEl") or {}).get("name")
             label = el.get("name", "")
             if org and org != label:
                 label = f"{label} (org {org})"
@@ -376,9 +380,12 @@ def _open_period_entries(c: Client, sy: int, start: str, end: str,
         siblings = blocks.get(e.get("lsId"), [e])
         bstart, bend = _block_bounds(siblings)
         ref_date = e["date"]
-        e["lessonDetailsUrl"] = _lesson_details_url(
-            c.host, e["periodId"], e["classId"], bstart, bend, ref_date,
-        )
+        if e["periodId"] is not None and e["classId"] is not None:
+            e["lessonDetailsUrl"] = _lesson_details_url(
+                c.host, e["periodId"], e["classId"], bstart, bend, ref_date,
+            )
+        else:
+            e["lessonDetailsUrl"] = None
     return entries
 
 
@@ -429,8 +436,8 @@ def _group_lesson_entries(entries: list[dict]) -> list[dict]:
 
 def _period_summary(p: dict) -> dict:
     """Extract a flat dict from a raw open-period entry."""
-    per = p.get("period", {})
-    dt = per.get("dtRange", {})
+    per = p.get("period") or {}
+    dt = per.get("dtRange") or {}
     summary = _base_period_fields(per, p.get("topicId"))
     summary.update({
         "startIso": dt.get("start"),
@@ -602,7 +609,7 @@ def _submit_topic_entries(c, sy: int, items: list[dict],
 
 
 def _format_search_hit(hit: dict) -> str:
-    res = hit.get("resource", {})
+    res = hit.get("resource") or {}
     line = (
         f"{hit.get('type', '?'):>8}  id={res.get('id'):>6}  "
         f"{res.get('shortName', ''):12} "

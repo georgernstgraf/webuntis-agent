@@ -365,11 +365,14 @@ wird geprueft.
 .RI [ OPTIONEN ]
 .PP
 Suche (tokenisierend, findet auch zweiteilige Namen via Einzelteile +
-Kurzname-Heuristik, als solche markiert), Klasse, Klassenvorstand sowie
-belegte/nicht belegte Lessons aus dem Schueler-Stundenplan \(em ohne
-Matrix-Calls. Belegt heisst eingeschrieben (Fach erscheint im
-Schueler-Plan); Anwesenheit spielt keine Rolle. Klassenfremde Lessons
-(andere Klasse im Schueler-Plan) werden extra gelistet.
+Kurzname-Heuristik, als solche markiert). Standardmaessig NUR die
+Trefferliste (schnell, keine Detail-Calls). Mit
+.B \-\-details
+zusaetzlich Klasse, Klassenvorstand sowie belegte/nicht belegte Lessons
+aus dem Schueler-Stundenplan \(em ohne Matrix-Calls. Belegt heisst
+eingeschrieben (Fach erscheint im Schueler-Plan); Anwesenheit spielt
+keine Rolle. Klassenfremde Lessons (andere Klasse im Schueler-Plan)
+werden extra gelistet.
 .TP
 .B \-\-id
 Direktzugriff per Schueler-ID statt Namenssuche (nur aktuelles Roster,
@@ -390,12 +393,16 @@ sind als NICHT AKTUELL markiert
 Die Stundenplan-Suche ist schuljahr-sensitiv, waehrend das aktuelle
 Roster immer das laufende Schuljahr zeigt.
 .TP
+.B \-\-details
+Detailblock je aktuellem Treffer zeigen (Klasse, KV, belegte/nicht
+belegte Lessons). Ohne diese Option bleibt die Ausgabe auf die
+Trefferliste beschraenkt und spart die zusaetzlichen API-Calls.
+.TP
 .B \-\-absenzen
-Zusaetzlich Absenzen der EIGENEN Lessons der Klasse (je Lesson ein
-Matrix-Call, mit
+Absenzen der EIGENEN Lessons der Klasse (je Lesson ein Matrix-Call, mit
 .B \-\-pause
-gedrosselt, Standard 1.0 s). Ohne diese Option bleibt die Ausgabe
-matrix-frei.
+gedrosselt, Standard 1.0 s). Impliziert
+.B \-\-details.
 .SS offen \- Arbeitsvorrat offener Perioden
 .BI "wu offen " "liste | status | verifizieren | vorschlag | eintragen | festtexte | pruefen"
 .RI [ "\-\-von " START " \-\-bis " ENDE ]

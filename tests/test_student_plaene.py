@@ -77,6 +77,39 @@ def test_faecher_aus_plaenen(monkeypatch):
     assert fa["klassenfremd"][0]["subject"] == "ITA3"
 
 
+def test_lesson_items_carry_class(monkeypatch):
+    # Regression: ohne `class` crashte die Textausgabe der klassenfremden
+    # Lessons mit KeyError 'class'
+    fa = cli_student._faecher_aus_plaenen(_JoinFakeClient(), 24, 21000,
+                                          "5XZY")
+    assert fa["belegt"][0]["class"] == "5XZY"
+    assert fa["klassenfremd"][0]["class"] == "5XZW"
+
+
+def test_print_student_detail_klassenfremd(monkeypatch, capsys):
+    monkeypatch.setattr(cli_student, "_kv_info",
+                        lambda c, sy, klass: {"teachers": {1: "KV X"}})
+    monkeypatch.setattr(cli_student, "_faecher_aus_plaenen",
+                        lambda c, sy, sid, klass: {
+                            "belegt": [{"subject": "POS1", "class": klass,
+                                        "teachers": ["MUS"], "termine": 2}],
+                            "klassenfremd": [{"subject": "ITA3",
+                                              "class": "5XZW",
+                                              "teachers": ["LEA"],
+                                              "termine": 1}],
+                            "nichtBelegt": [],
+                            "woche": {"start": "2026-09-21",
+                                      "end": "2026-09-26"},
+                            "quelle": "stundenplan"})
+    cli_student._print_student_detail(
+        object(), 24,
+        {"id": 21000, "class": "5XZY", "firstName": "Erika",
+         "lastName": "Muster"})
+    out = capsys.readouterr().out
+    assert "Klassenfremde Lessons (andere Klasse):" in out
+    assert "ITA3" in out and "(5XZW)" in out
+
+
 def test_belegt_ignores_attendance():
     # „belegt" = eingeschrieben: kein Matrix-/Anwesenheits-Check —
     # _faecher_aus_plaenen ruft NUR get_klassen + 2x entries (kein

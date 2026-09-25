@@ -14,6 +14,7 @@ Read this file carefully before making changes in affected areas.
   `client.login()`. See docs/WEBUNTIS_API.md § login.
 - **httpx cookie iteration**: `self.http.cookies` yields strings, not Cookie objects. Use `self.http.cookies.jar` to get Cookie objects with `.name`/`.value`.
 - **topicId can be None**: Some periods have no existing topic row (`topic: null` in getLessonTopic response). Send `id: 0` in PUT to create new.
+- **open-periods fields can be JSON `null`, not just missing**: `period.subject` (reine Absenzenprüfung ohne Fach), `period.classes`, `period.teachers`, `period.rooms`, `period.dtRange` und `periods` selbst können `null` sein. `dict.get(k, default)` greift NUR bei fehlendem Key — bei `null` liefert es `None` und der Folge-`.get(...)` crasht. Raw-Perioden deshalb immer via `or {}` / `or []` absichern (`PeriodFields.from_raw`, `_open_period_entries`, `_period_summary`).
 - **Block auto-update**: One PUT updates ALL periods with the same `lsId` (lesson block). Don't send separate PUTs for block partners.
 - **JWT expiry ~15 min**: Must refresh before each batch. Client caches JWT and refreshes 60s before expiry.
 - **School-Year-Id**: Not constant. Derive from `getSchoolyears()` REST

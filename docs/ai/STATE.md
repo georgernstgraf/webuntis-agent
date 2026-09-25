@@ -1,34 +1,29 @@
 # Project State
 
-Current status as of 2026-09-23 (nach CLI-Härtung #23).
+Current status as of 2026-09-24 (nach Session-Fixes #25).
 
 ## Current Focus
-Robuste, sichere CLI: eindeutige Exit-Codes je Fehlerklasse,
-hilfreiche Nutzungsfehler (volle Unterbefehl-Hilfe), aufgeräumtes
-Befehlsvokabular (`search`→`lehrer`) und durchgängiger Schreibschutz
-(alle Writes `--testlauf`-Standard). Tests 112/112 grün (Unit,
+Robustheit gegen reale WebUntis-Antworten + schlanker `student`-Default:
+Null-Feld-Crashs bei open-periods behoben, Fach-Match nur noch in eine
+Richtung, `student`-KeyError 'class' gefixt, `student` zeigt Details nur
+mit `--details` (Default schnell). Tests 131/131 grün (Unit,
 Fake-Clients, kein Netz).
 
-## Completed (this cycle, #23)
-- [x] `errors.py`: `WuError` + 8 Subklassen mit `exit_code` 2–9;
-  `classify_exit()` (Cause-Chain); `UnknownLessonError` = NotFound
-- [x] Client: `_check_status()` (401/403→Auth, 404→NotFound, 5xx→Server),
-  `httpx.TransportError`→Network, JSON-RPC→Server, Login/Setup typisiert
-- [x] `cli.main()` einziger Exit-Punkt (0–9, `KeyboardInterrupt`→130,
-  Unerwartetes→9 mit Traceback)
-- [x] `_HelpfulParser` + `usage_error()` + `_attach_parsers`; keine
-  Argumente → Top-Hilfe Exit 1
-- [x] `search` entfernt (`cli_suche.py` gelöscht), neu `lehrer`;
-  `klasse` mit Kandidatenvorschlag bei Namens-Fehltreffer
-- [x] Write-Guard: `lesson lehrstoff eintragen`, `lesson absenzen
-  pruefen`, `offen eintragen`, `offen pruefen` mit
-  `--testlauf/--ausfuehren`; `intern rpc`/`intern rest` ausgenommen
-- [x] `AGENTS.md`: Git-Reglementierung entfernt
-- [x] `man wu` nutzerlokal (`~/.local/share/man/man1/wu.1`) + README
-- [x] Tests: test_errors, test_usage_help, test_lehrer,
-  test_klasse_fuzzy, test_write_guard; bestehende angepasst
-- [x] Doku: man/wu.1, README, WEBUNTIS_API, docs/ai/*, Skill
-  fill-open-periods
+## Completed (this cycle, #25)
+- [x] Null-Feld-Crashs: `PeriodFields.from_raw`, `_open_period_entries`,
+  `_period_summary`, `_klasse_kandidaten`, `_format_search_hit` sichern
+  `subject`/`classes`/`teachers`/`rooms`/`dtRange`/`periods: null` per
+  `or {}`/`or []` ab; `lessonDetailsUrl = None` ohne classId
+- [x] Fach-Match `_subject_matches`: exakt ODER Query ist Kürzung
+  (`pmm` → `PMMx`); Rückrichtung entfernt (`pmmx` ≠ `PMM`)
+- [x] `_faecher_aus_plaenen._lesson_item` liefert `class` (Text-Crash
+  „Klassenfremde Lessons" + JSON)
+- [x] `student`: Default nur Trefferliste; `--details` für Klasse/KV/
+  Fächer; `--absenzen` impliziert `--details`; gilt für Text + `--json`
+  (spart ~4 API-Calls/Treffer)
+- [x] Doku: man/wu.1, README, WEBUNTIS_API, DECISIONS, PITFALLS
+- [x] Tests: test_period_fields, test_subject_matches, student-Default/
+  --details/absenzen
 
 ## Pending
 - Live-Verifikation der Fehlerklassen (Netz/Auth/Server) an echten
@@ -41,6 +36,8 @@ Fake-Clients, kein Netz).
 ## Notes
 - Pre-Push-Hook `scripts/pre-push` läuft `pytest tests/` und blockt rote
   Pushes; pro Clone per Symlink nach `.git/hooks/pre-push` (README).
+- `dict.get(k, default)` greift NUR bei fehlendem Key — WebUntis liefert
+  Felder auch als JSON `null` (s. PITFALLS.md).
 - `WuError` erbt von `RuntimeError`: Soft-Fail-Handler
   (`except RuntimeError: print(...)`) bleiben nutzbar.
 - `raum suchen/groesse` sind Stubs mit Exit 7 (vorher 3).

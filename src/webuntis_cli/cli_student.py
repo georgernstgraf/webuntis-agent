@@ -2,10 +2,11 @@
 
 Sucht per tokenisierender Stundenplan-Suche (mit automatischem Fallback
 in ältere Schuljahre) und reichert aktuelle Treffer aus students/overview
-an (volle Namen + Klasse). Detail je aktuellem Schüler: Klasse, KV und
-belegte/nicht belegte Lessons aus dem SCHÜLER-STUNDENPLAN (Join mit dem
-Klassen-Plan, ohne Matrix-Calls). Absenzen nur mit --absenzen (opt-in),
-dann Matrix-Scans über die EIGENEN Lessons der Klasse (gedrosselt).
+an (volle Namen + Klasse). Standardmäßig nur die Trefferliste (schnell,
+keine Detail-Calls). Detailblock je aktuellem Schüler (Klasse, KV,
+belegte/nicht belegte Lessons aus dem SCHÜLER-STUNDENPLAN, ohne
+Matrix-Calls) nur mit --details; --absenzen impliziert --details und
+scannt zusätzlich die Matrizen der EIGENEN Lessons (gedrosselt).
 """
 
 from __future__ import annotations
@@ -162,6 +163,7 @@ def _faecher_aus_plaenen(c, sy: int, student_id: int,
     def _lesson_item(g: dict) -> dict:
         return {"subject": g.get("subject"),
                 "subjectLong": g.get("subjectLong"),
+                "class": g.get("class"),
                 "teachers": g.get("teachers"),
                 "primaryTeacher": g.get("primaryTeacher"),
                 "parallel": bool(g.get("parallel")),
@@ -348,8 +350,14 @@ def _suchen_per_id(c, current_id: int, student_id: int) -> list[dict]:
     return []
 
 
+def _want_details(args: argparse.Namespace) -> bool:
+    """Detailblock nur mit `--details`; `--absenzen` impliziert ihn."""
+    return bool(getattr(args, "details", False)
+                or getattr(args, "absenzen", False))
+
+
 def cmd_student(args: argparse.Namespace) -> int:
-    """Alle Infos zu einem Schüler: Treffer, Klasse, KV, Fächer, Absenzen."""
+    """Schüler suchen; Details (KV, Fächer, Absenzen) nur mit --details."""
     if (args.name is None) == (getattr(args, "student_id", None) is None):
         usage_error(args, "entweder NAME oder --id angeben (genau eins)")
     c = _make_client(args)
@@ -376,23 +384,26 @@ def cmd_student(args: argparse.Namespace) -> int:
             "yearsSearched": years,
             "students": students,
         }
-        details = []
-        for s in students:
-            if not s.get("current") or not s.get("class"):
-                continue
-            try:
-                kv = _kv_info(c, current_id, s["class"])
-                fa = _faecher_aus_plaenen(c, current_id, s["id"],
-                                          s["class"])
-                ab = (_absenzen_eigene_lessons(
-                    c, current_id, s["id"], s["class"],
-                    pause=getattr(args, "pause", 1.0))
-                    if args.absenzen else None)
-            except RuntimeError as e:
-                details.append({"id": s["id"], "error": str(e)})
-                continue
-            details.append({"id": s["id"], "kv": kv["teachers"],
-                            "class": s["class"], **fa, "absenzen": ab})
+        details: list[dict] = []
+        # --details/--absenzen holen erst die teuren Detail-Calls (KV,
+        # Fächer, ggf. Matrix). Ohne sie bleibt die Suche schnell.
+        if _want_details(args):
+            for s in students:
+                if not s.get("current") or not s.get("class"):
+                    continue
+                try:
+                    kv = _kv_info(c, current_id, s["class"])
+                    fa = _faecher_aus_plaenen(c, current_id, s["id"],
+                                              s["class"])
+                    ab = (_absenzen_eigene_lessons(
+                        c, current_id, s["id"], s["class"],
+                        pause=getattr(args, "pause", 1.0))
+                        if getattr(args, "absenzen", False) else None)
+                except RuntimeError as e:
+                    details.append({"id": s["id"], "error": str(e)})
+                    continue
+                details.append({"id": s["id"], "kv": kv["teachers"],
+                                "class": s["class"], **fa, "absenzen": ab})
         if details:
             payload["details"] = details
         print(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -427,9 +438,11 @@ def cmd_student(args: argparse.Namespace) -> int:
         print("ACHTUNG: aktuell NICHT im System — nur Treffer aus "
               "älteren Schuljahren.", file=sys.stderr)
         return 0
+    if not _want_details(args):
+        return 0
     # Detail je aktuellem Treffer mit Klasse
     for s in [x for x in current_hits if x.get("class")]:
         _print_student_detail(c, current_id, s,
-                              absenzen=args.absenzen,
+                              absenzen=getattr(args, "absenzen", False),
                               pause=getattr(args, "pause", 1.0))
     return 0

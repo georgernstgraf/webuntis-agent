@@ -135,15 +135,18 @@ umgehen: `git push --no-verify`.
 ./wu lesson 3AHWII/SWP1x              # Roster des nächsten Termins
 ./wu lesson 3AHWII/SWP1x termine --mit-lehrstoff
 ./wu lesson 3AHWII/SWP1x absenzen zeigen
-./wu student "Erika Muster"           # Klasse, KV, belegte Lessons (ohne Matrix)
-./wu student --id 4711                # derselbe Detail-Zugriff per Schüler-ID
+./wu student "Erika Muster"           # nur Trefferliste (schnell)
+./wu student "Erika Muster" --details # + Klasse, KV, belegte Lessons (ohne Matrix)
+./wu student --id 4711 --details      # derselbe Detail-Zugriff per Schüler-ID
 ./wu student "Erika Muster" --absenzen  # + fehlt/gehalten der eigenen Lessons
 ```
 
-`student` läuft ohne Matrix-Calls: belegt/nicht belegt kommt aus dem
-Schüler-Stundenplan (belegt = eingeschrieben, Anwesenheit egal);
-parallele Gruppen desselben Fachs werden über den Primary-Lehrer
-getrennt, `eigen`-Lessons erkannt. Absenzen sind opt-in (`--absenzen`).
+`student` liefert standardmäßig nur die Trefferliste (keine
+Detail-Calls). Mit `--details` kommt je Treffer die Detailausgabe:
+belegt/nicht belegt aus dem Schüler-Stundenplan (belegt = eingeschrieben,
+Anwesenheit egal); parallele Gruppen desselben Fachs werden über den
+Primary-Lehrer getrennt, `eigen`-Lessons erkannt. `--details` läuft ohne
+Matrix-Calls; `--absenzen` impliziert `--details` und ist opt-in.
 
 ### Einzelnen Lehrstoff schreiben
 

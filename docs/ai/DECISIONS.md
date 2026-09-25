@@ -267,6 +267,35 @@ Superseded decisions are relocated to HISTORY.md.
   entscheidet selbst über Git. Die `recordings/`-Gitignore-Notiz bleibt.
 - **Reason**: Nutzer-Vorgabe.
 
+## 2026-09-24: Fach-Match nur in EINE Richtung (Query ist Kürzung)
+- **Choice**: `_subject_matches` (Lesson-Resolver) matcht nur noch
+  exakt (case-insensitiv) ODER Subject beginnt mit der Query
+  (`pmm` → `PMMx`). Die Rückrichtung (`n.startswith(s)`) wurde entfernt:
+  eine längere/präzisere Query darf ein kürzeres Sammel-Fach NICHT
+  treffen (`pmmx` matchte fälschlich `PMM` als „mehrdeutig").
+- **Reason**: Nutzer-Beobachtung `wu lesson 4ahwit/pmmx` — zwei
+  Kandidaten (`PMM`, `PMMx`), obwohl `pmmx` eindeutig `PMMx` meint.
+- **Considered**: Exact-Priority zusätzlich (exakter Treffer schlägt
+  Präfix) — abgelehnt, Nutzer wollte nur die Richtung korrigiert;
+  Exact-only (abgelehnt — verliert Abkürzungen wie `WMC` → `WMC_1`).
+- **Tradeoff**: `pmm` bleibt bewusst mehrdeutig zwischen `PMM` und
+  `PMMx` (Warnung + eigene/nahe Lesson); Abkürzung ist weiter erlaubt.
+
+## 2026-09-24: `student` default kurz, Details mit `--details`
+- **Choice**: `wu student NAME` liefert standardmäßig nur die
+  Trefferliste (schnell, keine Detail-Calls). Der Detailblock (Klasse,
+  KV, belegte/nicht belegte Lessons, ggf. Absenzen) erscheint nur mit
+  `--details`; `--absenzen` impliziert `--details`. Gilt für Text UND
+  `--json` (`details` nur bei `--details`).
+- **Reason**: Nutzer-Vorgabe — Default soll schnell sein und wenige
+  API-Calls brauchen; Details nur bei Bedarf.
+- **Considered**: Details in `--json` immer liefern (abgelehnt —
+  inkonsistent, spart keine Calls); `--absenzen` ohne `--details`
+  als Usage-Fehler (abgelehnt — bricht bestehende Aufrufe).
+- **Tradeoff**: Bestehende Skripte, die ohne `--details` auf den
+  Detailblock setzten, müssen `--details` ergänzen; spart pro Treffer
+  ~4 API-Calls (`_kv_info` + `_faecher_aus_plaenen`).
+
 
 
 

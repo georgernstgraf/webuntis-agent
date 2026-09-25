@@ -13,14 +13,17 @@ Follow these without question. Do not deviate unless explicitly told.
   `--von/--bis` (Zeiträume; bei `offen` optional, Default
   Schuljahr-Start..heute aus open-periods/meta), `--testlauf/--ausfuehren`,
   `--text-datei`, `--klassen-id`, `--termin/--thema-id`, `--datei`,
-  `--pause`; `--json` und `--lsid` bleiben (sprachneutral)
+  `--pause`, `--details`; `--json` und `--lsid` bleiben (sprachneutral)
 - Flags sind deutsch, `dest`s (args-Attribute) bleiben englisch
   (interner Code): z.B. `--schuljahr-id` mit `dest="school_year_id"`;
   nur sichtbare Strings werden übersetzt, kein Reader-Umbau
 - Jede (Sub-)Gruppe bekommt `description` + `epilog` mit Beispielen —
   `wu` ohne Argumente muss selbsterklärend sein
-- Absenzen-Schalter: `--absenzen` (opt-in, `student`) — Standard-Ausgabe
-  bleibt Matrix-frei
+- Absenzen-Schalter: `--absenzen` (opt-in, `student`) — Standardausgabe
+  bleibt Matrix-frei; `student` zeigt den Detailblock (KV, Fächer,
+  Absenzen) nur mit `--details`, Default ist die reine Trefferliste;
+  `--absenzen` impliziert `--details` (spart sonst die teuren
+  Detail-Calls, s. DECISIONS.md)
 - **ALLE Writes sind testlauf-Standard** (`--testlauf` = nur zeigen, kein
   Write) und schreiben nur mit `--ausfuehren`: `lesson aufnehmen/anpassen`,
   `lesson lehrstoff eintragen/aus-git`,

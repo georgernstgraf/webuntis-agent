@@ -303,10 +303,11 @@ obtainable within seconds from any live CLI call (`--json` outputs,
 - `wu lesson KLASSE/FACH aufnehmen|anpassen …`
   — Teilnehmer-Writes (Testlauf-Standard)
 - `wu klasse KLASSE` — Übersicht: KV, alle Lessons der Klasse (Stundenplan, `eigen`-Markierung), Roster
-- `wu student NAME [--absenzen]` — Treffer + Detail: Klasse, KV,
-  belegte/nicht belegte Lessons aus dem Schüler-Stundenplan (belegt =
-  eingeschrieben, Anwesenheit egal; 2 Plan-Calls, keine Matrix);
-  mit --absenzen zusätzlich fehlt/gehalten der EIGENEN Lessons
+- `wu student NAME [--details] [--absenzen]` — Treffer (Default, schnell);
+  mit --details je Treffer: Klasse, KV, belegte/nicht belegte Lessons aus
+  dem Schüler-Stundenplan (belegt = eingeschrieben, Anwesenheit egal;
+  2 Plan-Calls, keine Matrix); mit --absenzen (impliziert --details)
+  zusätzlich fehlt/gehalten der EIGENEN Lessons
   (je Lesson 1 Detail- + 1 Matrix-Call, gedrosselt)
 - `wu lehrer NAME [--wortteile] [--alle-jahre]`
   — Lehrer suchen; Steckbrief (Kürzel/ID) + KV-Klassen

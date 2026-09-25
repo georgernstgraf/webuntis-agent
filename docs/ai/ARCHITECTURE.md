@@ -52,7 +52,7 @@ fill-open-periods workflow with human confirmation.
 | `lesson K/F absenzen eintragen\|entfernen` | Abwesenheit setzen/löschen (Write, Testlauf-Standard) |
 | `lesson K/F absenzen pruefen` | Absenzenprüfung (Write) |
 | `lesson K/F aufnehmen\|anpassen` | Teilnehmer-Writes (Testlauf-Standard) |
-| `student NAME [--absenzen]` | Treffer + Detail: Klasse, KV, belegte/nicht belegte Lessons aus Plan-Join (0 Matrix-Calls); --absenzen: eigene Lessons |
+| `student NAME [--details] [--absenzen]` | Trefferliste (Default, schnell); mit --details Klasse/KV/belegte-nicht-belegte Lessons aus Plan-Join (0 Matrix-Calls); --absenzen (impliziert --details): eigene Lessons |
 | `offen liste\|status\|verifizieren` | Arbeitsvorrat lesen (`--von/--bis` optional: Default Schuljahr-Start..heute aus `open-periods/meta`) |
 | `offen vorschlag` | Vorschlag-JSON aus Git-Logs (Skill-Input, schreibt nichts) |
 | `offen eintragen --datei` | bestätigte Lehrstoffe schreiben |

@@ -33,8 +33,8 @@ class _IdFakeClient:
 
 def _args(**kw):
     base = dict(name=None, student_id=None, klasse=None, wortteile=False,
-                alle_jahre=False, absenzen=False, pause=1.0, json=False,
-                school_year_id=None)
+                alle_jahre=False, absenzen=False, details=False, pause=1.0,
+                json=False, school_year_id=None)
     base.update(kw)
     return argparse.Namespace(**base)
 
@@ -73,7 +73,7 @@ def test_cmd_student_id_text_detail(monkeypatch, capsys):
     monkeypatch.setattr(cli_student, "_make_client",
                         lambda args: _IdFakeClient([_ov_student()]))
     _patch_detail(monkeypatch)
-    rc = cli_student.cmd_student(_args(student_id=4711))
+    rc = cli_student.cmd_student(_args(student_id=4711, details=True))
     assert rc == 0
     out = capsys.readouterr().out
     assert "1 Treffer für 4711" in out
@@ -81,11 +81,62 @@ def test_cmd_student_id_text_detail(monkeypatch, capsys):
     assert "Belegte Fächer" in out
 
 
+def test_cmd_student_id_default_is_short(monkeypatch, capsys):
+    # Default: nur Trefferliste, KEINE Detail-Calls
+    monkeypatch.setattr(cli_student, "_make_client",
+                        lambda args: _IdFakeClient([_ov_student()]))
+
+    def _boom(*a, **kw):
+        raise AssertionError("Detail-Call ohne --details")
+
+    monkeypatch.setattr(cli_student, "_faecher_aus_plaenen", _boom)
+    monkeypatch.setattr(cli_student, "_kv_info", _boom)
+    rc = cli_student.cmd_student(_args(student_id=4711))
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "1 Treffer für 4711" in out
+    assert "Erika Muster" in out
+    assert "Belegte Fächer" not in out
+    assert "---" not in out
+
+
+def test_cmd_student_id_json_short_without_details(monkeypatch, capsys):
+    monkeypatch.setattr(cli_student, "_make_client",
+                        lambda args: _IdFakeClient([_ov_student()]))
+
+    def _boom(*a, **kw):
+        raise AssertionError("Detail-Call ohne --details")
+
+    monkeypatch.setattr(cli_student, "_faecher_aus_plaenen", _boom)
+    rc = cli_student.cmd_student(_args(student_id=4711, json=True))
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert "details" not in payload
+    assert [s["id"] for s in payload["students"]] == [4711]
+
+
+def test_cmd_student_id_absenzen_implies_details(monkeypatch, capsys):
+    monkeypatch.setattr(cli_student, "_make_client",
+                        lambda args: _IdFakeClient([_ov_student()]))
+    _patch_detail(monkeypatch)
+    monkeypatch.setattr(cli_student, "_absenzen_eigene_lessons",
+                        lambda c, sy, sid, klass, pause=1.0: {
+                            "lessons": [], "gesamt": {"gehalten": 0,
+                                                      "fehlt": 0},
+                            "scope": "eigene Lessons"})
+    rc = cli_student.cmd_student(_args(student_id=4711, absenzen=True))
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Belegte Fächer" in out
+    assert "Absenzen (eigene Lessons):" in out
+
+
 def test_cmd_student_id_json(monkeypatch, capsys):
     monkeypatch.setattr(cli_student, "_make_client",
                         lambda args: _IdFakeClient([_ov_student()]))
     _patch_detail(monkeypatch)
-    rc = cli_student.cmd_student(_args(student_id=4711, json=True))
+    rc = cli_student.cmd_student(
+        _args(student_id=4711, json=True, details=True))
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["query"] == 4711
@@ -108,7 +159,8 @@ def test_cmd_student_id_without_class_no_detail(monkeypatch, capsys):
     monkeypatch.setattr(cli_student, "_make_client",
                         lambda args: _IdFakeClient([s]))
     _patch_detail(monkeypatch)
-    rc = cli_student.cmd_student(_args(student_id=4711, json=True))
+    rc = cli_student.cmd_student(
+        _args(student_id=4711, json=True, details=True))
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert "details" not in payload

@@ -169,12 +169,18 @@ def _lsid_from_detail(c: Client, class_id: int,
 
 
 def _subject_matches(subj: str | None, needle: str) -> bool:
-    """Fach-Match: exakt (case-insensitiv) oder Präfix in eine Richtung."""
+    """Fach-Match: exakt (case-insensitiv) oder Query ist Kürzung.
+
+    Erlaubt ist nur die EINE Richtung: `needle` darf kürzer sein als das
+    Fach (`pmm` -> `PMMx`). Ein LÄNGERER Query darf ein kürzeres Fach
+    NICHT treffen (`pmmx` -> `PMM` ist KEIN Treffer), sonst matcht eine
+    präzisere Eingabe die unspezifischere Sammel-Lesson mit.
+    """
     if not subj:
         return False
     s = subj.lower()
     n = needle.lower()
-    return s == n or s.startswith(n) or n.startswith(s)
+    return s == n or s.startswith(n)
 
 
 def _resolve_lesson_from_class_subject(
